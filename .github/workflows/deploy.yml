@@ -2,9 +2,9 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   build-and-deploy:
@@ -33,7 +33,7 @@ jobs:
       run: npm ci
     
     - name: Build
-      run: npm run build
+      run: npm run build:prod
     
     - name: Setup Pages
       uses: actions/configure-pages@v4
