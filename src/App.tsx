@@ -12,6 +12,9 @@ const queryClient = new QueryClient();
 
 const Router = BrowserRouter;
 
+// Detectar se estamos em produção para usar o basename correto
+const basename = import.meta.env.PROD ? '/connect1.1' : '/';
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider defaultTheme="system" storageKey="torp-theme">
@@ -26,6 +29,7 @@ const App = () => (
           autoHideDelay={15000}
         />
         <Router
+          basename={basename}
           future={{
             v7_startTransition: true,
             v7_relativeSplatPath: true

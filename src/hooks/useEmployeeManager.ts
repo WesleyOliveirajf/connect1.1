@@ -161,12 +161,22 @@ export const useEmployeeManager = () => {
   };
 
   // Editar funcionário existente
-  const updateEmployee = (index: number, employeeData: EmployeeFormData): boolean => {
+  const updateEmployee = (id: string, employeeData: EmployeeFormData): boolean => {
     try {
+      const index = employees.findIndex(emp => emp.id === id);
+      if (index === -1) {
+        toast({
+          title: "❌ Erro ao Atualizar",
+          description: "Funcionário não encontrado.",
+          variant: "destructive",
+        });
+        return false;
+      }
+
       // Verificar se o email já existe (exceto para o próprio funcionário e se não for 'xxx')
       if (employeeData.email !== 'xxx') {
-        const emailExists = employees.some((emp, i) => 
-          i !== index && emp.email === employeeData.email
+        const emailExists = employees.some(emp => 
+          emp.id !== id && emp.email === employeeData.email
         );
         if (emailExists) {
           toast({
@@ -180,7 +190,7 @@ export const useEmployeeManager = () => {
 
       const updatedEmployees = [...employees];
       updatedEmployees[index] = {
-        id: employees[index].id || generateId(),
+        ...updatedEmployees[index],
         ...employeeData,
         lunchTime: employeeData.lunchTime || undefined,
       };
@@ -205,10 +215,19 @@ export const useEmployeeManager = () => {
   };
 
   // Remover funcionário
-  const removeEmployee = (index: number): boolean => {
+  const removeEmployee = (id: string): boolean => {
     try {
-      const employeeToRemove = employees[index];
-      const updatedEmployees = employees.filter((_, i) => i !== index);
+      const employeeToRemove = employees.find(emp => emp.id === id);
+      if (!employeeToRemove) {
+        toast({
+          title: "❌ Erro ao Remover",
+          description: "Funcionário não encontrado.",
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      const updatedEmployees = employees.filter(emp => emp.id !== id);
       saveEmployees(updatedEmployees);
 
       toast({

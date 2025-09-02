@@ -1,31 +1,20 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import dns from "node:dns";
-
-// Configura DNS para resolver problemas de localhost
-dns.setDefaultResultOrder('verbatim');
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  // Detecta o ambiente de deploy
-  const isVercel = process.env.VERCEL === '1';
-  const isGitHubPages = process.env.GITHUB_ACTIONS === 'true';
-  
-  // Configura base path baseado no ambiente
-  let basePath = '/';
-  if (isGitHubPages) {
-    basePath = '/connect1.1/';
-  }
+  const isProduction = mode === 'production';
+  const base = isProduction ? '/connect1.1/' : '/';
   
   return {
-  base: basePath,
+  base,
   server: {
-    port: 5173,
-    host: 'localhost',
+    port: 8080,
+    host: '127.0.0.1',
     hmr: {
-      port: 24679,
-      host: 'localhost'
+      protocol: 'ws',
+      host: '127.0.0.1'
     },
     strictPort: false
   },

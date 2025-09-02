@@ -241,49 +241,51 @@ const EmployeeManager = () => {
             </Card>
           ) : (
             filteredEmployees.map((employee) => (
-              <Card key={employee.id} className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
-                      <Users className="h-5 w-5 text-primary" />
+              <div key={employee.id}>
+                <Card className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
+                        <Users className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold">{employee.name}</h3>
+                          <Badge variant="secondary">{employee.department}</Badge>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <span>Ramal: {employee.extension}</span>
+                          <span>Email: {employee.email}</span>
+                          {employee.lunchTime && (
+                            <span>Almoço: {employee.lunchTime}</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold">{employee.name}</h3>
-                        <Badge variant="secondary">{employee.department}</Badge>
-                      </div>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span>Ramal: {employee.extension}</span>
-                        <span>Email: {employee.email}</span>
-                        {employee.lunchTime && (
-                          <span>Almoço: {employee.lunchTime}</span>
-                        )}
-                      </div>
+                    
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditEmployee(employee)}
+                        className="gap-2"
+                      >
+                        <Edit className="h-4 w-4" />
+                        Editar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDeleteEmployee(employee)}
+                        className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Remover
+                      </Button>
                     </div>
                   </div>
-                  
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEditEmployee(employee)}
-                      className="gap-2"
-                    >
-                      <Edit className="h-4 w-4" />
-                      Editar
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setDeleteEmployee(employee)}
-                      className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Remover
-                    </Button>
-                  </div>
-                </div>
-              </Card>
+                </Card>
+              </div>
             ))
           )}
         </div>
