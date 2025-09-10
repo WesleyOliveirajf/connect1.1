@@ -4,11 +4,8 @@ import path from "path";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  const isProduction = mode === 'production';
-  const base = isProduction ? '/connect1.1/' : '/';
-  
   return {
-  base,
+  base: '/',
   server: {
     port: 8080,
     host: '127.0.0.1',
