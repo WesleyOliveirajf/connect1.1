@@ -5,6 +5,7 @@ import LunchHours from "@/components/LunchHours";
 import Footer from "@/components/Footer";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import AdminPanel from "@/components/AdminPanel";
+import Chatbot from "@/components/Chatbot";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
 
 const Index = () => {
@@ -76,6 +77,9 @@ const Index = () => {
           </ErrorBoundary>
         </main>
         <Footer />
+        
+        {/* Chatbot */}
+        <Chatbot />
       </div>
     </ErrorBoundary>
   );
