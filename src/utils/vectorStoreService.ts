@@ -74,8 +74,8 @@ class VectorStoreService {
   }
 
   /**
-   * Gera embedding simples usando hash e características do texto
-   * Nota: Em produção, usar um serviço de embedding real como OpenAI ou Cohere
+   * Gera embedding melhorado com características específicas para dados internos
+   * Prioriza informações relevantes da empresa (funcionários, departamentos, comunicados)
    */
   private generateEmbedding(text: string): number[] {
     const cleanText = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
@@ -90,16 +90,33 @@ class VectorStoreService {
       wordFreq.set(word, (wordFreq.get(word) || 0) + 1);
     });
     
+    // Termos importantes da empresa TORP
+    const companyTerms = [
+      'torp', 'funcionario', 'funcionária', 'departamento', 'setor', 'ramal', 'extensao', 'email',
+      'rh', 'financeiro', 'comercial', 'marketing', 'controladoria', 'compras', 'prefeitura',
+      'gente', 'gestao', 'administrativo', 'malharia', 'producao', 'seguranca', 'enfermagem',
+      'reuniao', 'comunicado', 'manutencao', 'treinamento', 'almoco', 'horario', 'telefone'
+    ];
+    
     // Preenche embedding com características do texto
     let index = 0;
     
-    // Frequência de palavras (primeiras 100 dimensões)
-    for (const [word, freq] of Array.from(wordFreq.entries()).slice(0, 100)) {
-      if (index < 100) {
+    // Frequência de palavras (primeiras 80 dimensões)
+    for (const [word, freq] of Array.from(wordFreq.entries()).slice(0, 80)) {
+      if (index < 80) {
         embedding[index] = Math.log(freq + 1) / Math.log(words.length + 1);
         index++;
       }
     }
+    
+    // Boost para termos da empresa (dimensões 80-120)
+    companyTerms.forEach((term, i) => {
+      if (index < 120) {
+        const termFreq = wordFreq.get(term) || 0;
+        embedding[index] = termFreq > 0 ? Math.log(termFreq + 1) * 2 : 0; // Boost x2 para termos da empresa
+        index++;
+      }
+    });
     
     // Características estatísticas (próximas 50 dimensões)
     if (index < 150) {
@@ -256,12 +273,12 @@ class VectorStoreService {
   }
 
   /**
-   * Busca híbrida (semântica + palavras-chave)
+   * Busca híbrida melhorada com priorização para dados internos da empresa
    */
   async hybridSearch(query: string, limit: number = 5): Promise<SearchResult[]> {
     const [semanticResults, keywordResults] = await Promise.all([
-      this.searchSimilar(query, limit * 2),
-      this.searchByKeywords(query.split(/\s+/), limit * 2)
+      this.searchSimilar(query, limit * 3),
+      this.searchByKeywords(query.split(/\s+/), limit * 3)
     ]);
     
     // Combina resultados com pesos
@@ -269,21 +286,27 @@ class VectorStoreService {
     
     // Adiciona resultados semânticos (peso 0.7)
     for (const result of semanticResults) {
+      const baseScore = result.similarity * 0.7;
+      const boostedScore = this.applyInternalDataBoost(result, baseScore, query);
+      
       combinedResults.set(result.document.id, {
         document: result.document,
-        similarity: result.similarity * 0.7
+        similarity: boostedScore
       });
     }
     
     // Adiciona/combina resultados de palavras-chave (peso 0.3)
     for (const result of keywordResults) {
       const existing = combinedResults.get(result.document.id);
+      const baseScore = result.similarity * 0.3;
+      const boostedScore = this.applyInternalDataBoost(result, baseScore, query);
+      
       if (existing) {
-        existing.similarity += result.similarity * 0.3;
+        existing.similarity = Math.max(existing.similarity, boostedScore);
       } else {
         combinedResults.set(result.document.id, {
           document: result.document,
-          similarity: result.similarity * 0.3
+          similarity: boostedScore
         });
       }
     }
@@ -292,6 +315,53 @@ class VectorStoreService {
     finalResults.sort((a, b) => b.similarity - a.similarity);
     
     return finalResults.slice(0, limit);
+  }
+
+  /**
+   * Aplica boost para dados internos da empresa baseado no tipo e relevância
+   */
+  private applyInternalDataBoost(result: SearchResult, baseScore: number, query: string): number {
+    let boostedScore = baseScore;
+    const queryLower = query.toLowerCase();
+    
+    // Boost para dados de funcionários
+    if (result.document.metadata.type === 'employee') {
+      boostedScore *= 1.5; // Boost de 50% para funcionários
+      
+      // Boost adicional se a query menciona termos relacionados a funcionários
+      const employeeTerms = ['funcionario', 'funcionária', 'ramal', 'extensao', 'email', 'departamento', 'setor'];
+      if (employeeTerms.some(term => queryLower.includes(term))) {
+        boostedScore *= 1.3;
+      }
+      
+      // Boost se menciona nome específico ou departamento
+      if (result.document.metadata.type === 'employee') {
+        const empMeta = result.document.metadata as Extract<DocumentMetadata, { type: 'employee' }>;
+        if (queryLower.includes(empMeta.name.toLowerCase()) || 
+            queryLower.includes(empMeta.department.toLowerCase())) {
+          boostedScore *= 1.8;
+        }
+      }
+    }
+    
+    // Boost para comunicados/anúncios
+    if (result.document.metadata.type === 'web' && 
+        result.document.content.toLowerCase().includes('comunicado')) {
+      boostedScore *= 1.3; // Boost de 30% para comunicados
+    }
+    
+    // Boost para conteúdo recente (últimos 30 dias)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    if (result.document.metadata.type === 'employee') {
+      const empMeta = result.document.metadata as Extract<DocumentMetadata, { type: 'employee' }>;
+      if (new Date(empMeta.updatedAt) > thirtyDaysAgo) {
+        boostedScore *= 1.1; // Boost de 10% para dados recentes
+      }
+    }
+    
+    return Math.min(boostedScore, 1.0); // Limita o score máximo a 1.0
   }
 
   /**

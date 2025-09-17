@@ -6,14 +6,16 @@ CONECT é uma aplicação web moderna que centraliza informações de funcionár
 
 ## 🚀 Funcionalidades
 
-- **Diretório de Funcionários**: Visualize informações de contato, departamentos e horários de almoço
-- **Comunicados**: Sistema de anúncios e comunicações internas
-- **Integração com Microsoft Teams**: Acesso direto às conversas do Teams
-- **Interface Responsiva**: Funciona perfeitamente em desktop e mobile
-- **Busca Avançada**: Filtre funcionários por departamento, nome ou outras informações
-- **PWA (Progressive Web App)**: Instalável como aplicativo nativo
-- **Funcionamento Offline**: Cache inteligente com Service Worker
-- **Notificações Push**: Receba atualizações importantes (em desenvolvimento)
+- **🤖 Chatbot Inteligente**: Assistente IA com Groq para consultas sobre funcionários
+- **🔍 RAG (Retrieval-Augmented Generation)**: Busca inteligente em dados internos
+- **👥 Diretório de Funcionários**: Visualize informações de contato, departamentos e horários de almoço
+- **📢 Comunicados**: Sistema de anúncios e comunicações internas
+- **💬 Integração com Microsoft Teams**: Acesso direto às conversas do Teams
+- **📱 Interface Responsiva**: Funciona perfeitamente em desktop e mobile
+- **🔎 Busca Avançada**: Filtre funcionários por departamento, nome ou outras informações
+- **📲 PWA (Progressive Web App)**: Instalável como aplicativo nativo
+- **🔄 Funcionamento Offline**: Cache inteligente com Service Worker
+- **🔔 Notificações Push**: Receba atualizações importantes (em desenvolvimento)
 
 ## 🛠️ Tecnologias Utilizadas
 
@@ -33,6 +35,33 @@ CONECT é uma aplicação web moderna que centraliza informações de funcionár
 
 ## 🚀 Como executar o projeto
 
+### ⚡ Setup Automático (Recomendado)
+
+1. **Clone o repositório**
+   ```bash
+   git clone https://github.com/WesleyOliveirajf/connect1.1.git
+   cd connect1.1
+   ```
+
+2. **Execute o setup automático**
+   ```powershell
+   # No Windows (PowerShell)
+   .\setup.ps1
+   ```
+   
+   O script irá:
+   - ✅ Verificar dependências
+   - ✅ Instalar pacotes npm
+   - ✅ Configurar arquivo .env automaticamente
+   - ✅ Verificar chave Groq (já configurada)
+
+3. **Inicie o servidor**
+   ```bash
+   npm run dev
+   ```
+
+### 🔧 Setup Manual
+
 1. **Clone o repositório**
    ```bash
    git clone https://github.com/WesleyOliveirajf/connect1.1.git
@@ -44,7 +73,15 @@ CONECT é uma aplicação web moderna que centraliza informações de funcionár
    npm install
    ```
 
-3. **Execute o servidor de desenvolvimento**
+3. **Configure o ambiente**
+   ```bash
+   # Copie o arquivo de exemplo
+   cp .env.example .env
+   ```
+   
+   > **Nota**: A chave da Groq já está configurada no .env.example
+
+4. **Execute o servidor de desenvolvimento**
    ```bash
    npm run dev
    ```

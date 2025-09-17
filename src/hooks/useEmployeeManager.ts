@@ -80,26 +80,33 @@ export const useEmployeeManager = () => {
   // Carregar funcionários do localStorage ou usar dados padrão
   useEffect(() => {
     try {
+      console.log('[useEmployeeManager] 🔍 Verificando dados no localStorage...');
       const storedEmployees = localStorage.getItem(STORAGE_KEY);
       if (storedEmployees) {
         const parsed = JSON.parse(storedEmployees);
         const employeesWithIds = ensureEmployeeIds(parsed);
+        console.log(`[useEmployeeManager] ✅ Encontrados ${employeesWithIds.length} funcionários no localStorage`);
+        console.log('[useEmployeeManager] Primeiros 3 funcionários:', employeesWithIds.slice(0, 3).map(emp => ({ name: emp.name, department: emp.department })));
         setEmployees(employeesWithIds);
         // Salvar de volta com IDs se necessário
         if (employeesWithIds.some((emp, index) => emp.id !== parsed[index]?.id)) {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(employeesWithIds));
+          console.log(`[useEmployeeManager] 💾 Salvos ${employeesWithIds.length} funcionários no localStorage`);
         }
       } else {
+        console.log('[useEmployeeManager] ⚠️ Nenhum dado encontrado no localStorage, usando dados padrão');
         const employeesWithIds = ensureEmployeeIds(DEFAULT_EMPLOYEES);
         setEmployees(employeesWithIds);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(employeesWithIds));
+        console.log(`[useEmployeeManager] 💾 Salvos ${employeesWithIds.length} funcionários padrão no localStorage`);
       }
     } catch (error) {
-      console.error('Erro ao carregar funcionários:', error);
+      console.error('[useEmployeeManager] ❌ Erro ao carregar funcionários:', error);
       const employeesWithIds = ensureEmployeeIds(DEFAULT_EMPLOYEES);
       setEmployees(employeesWithIds);
     } finally {
       setIsLoading(false);
+      console.log('[useEmployeeManager] 🎉 Carregamento concluído');
     }
   }, []);
 

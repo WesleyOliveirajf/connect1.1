@@ -82,19 +82,28 @@ export const useChatbot = (): UseChatbotReturn => {
   // Testar conexão inicial
   const testConnection = useCallback(async () => {
     try {
+      console.log('[useChatbot] Iniciando teste de conexão...');
       const isConnected = await groqService.testConnection();
       setIsConnected(isConnected);
       
       if (!isConnected) {
+        console.warn('[useChatbot] Falha na conexão com Groq');
         toast({
           title: "Conexão com Groq",
           description: "Não foi possível conectar à API da Groq. Verifique sua chave de API.",
           variant: "destructive"
         });
+      } else {
+        console.log('[useChatbot] Conexão com Groq estabelecida com sucesso');
       }
     } catch (error) {
-      console.error('Erro ao testar conexão:', error);
+      console.error('[useChatbot] Erro ao testar conexão:', error);
       setIsConnected(false);
+      toast({
+        title: "Erro de Conexão",
+        description: "Erro inesperado ao testar conexão com Groq",
+        variant: "destructive"
+      });
     }
   }, [toast]);
 
@@ -143,8 +152,11 @@ export const useChatbot = (): UseChatbotReturn => {
             content: msg.content
           }));
 
-        // Enviar para Groq
-        const response = await groqService.sendMessage(content, conversationHistory);
+        // Enviar para Groq com RAG habilitado
+        const response = await groqService.sendMessage(content, conversationHistory, {
+          useRAG: true,
+          websiteUrl: import.meta.env.VITE_RAG_WEBSITE_URL || ''
+        });
         
         // Remover mensagem de loading e adicionar resposta
          setMessages(prev => {
@@ -171,9 +183,22 @@ export const useChatbot = (): UseChatbotReturn => {
       setMessages(prev => {
         const withoutLoading = prev.filter(msg => msg.id !== loadingMessage.id);
         
+        let errorContent = 'Desculpe, ocorreu um erro ao processar sua mensagem. Tente novamente.';
+        
+        // Personalizar mensagem de erro baseada no tipo
+        if (error instanceof Error) {
+          if (error.message.includes('API Key')) {
+            errorContent = 'Erro de autenticação. Verifique se a API Key está configurada corretamente.';
+          } else if (error.message.includes('limite')) {
+            errorContent = 'Limite de requisições excedido. Aguarde alguns minutos antes de tentar novamente.';
+          } else if (error.message.includes('servidor')) {
+            errorContent = 'Serviço temporariamente indisponível. Tente novamente em alguns minutos.';
+          }
+        }
+        
         const errorMessage: ChatMessage = {
           id: generateMessageId(),
-          content: 'Desculpe, ocorreu um erro ao processar sua mensagem. Tente novamente.',
+          content: errorContent,
           sender: 'bot',
           timestamp: new Date()
         };
@@ -186,7 +211,7 @@ export const useChatbot = (): UseChatbotReturn => {
       setIsConnected(false);
       toast({
         title: "Erro",
-        description: "Falha na comunicação com o chatbot",
+        description: error instanceof Error ? error.message : "Falha na comunicação com o chatbot",
         variant: "destructive"
       });
     } finally {

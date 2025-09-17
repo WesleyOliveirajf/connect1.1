@@ -16,13 +16,15 @@ import {
   Megaphone,
   Plus,
   Edit,
-  Trash2
+  Trash2,
+  Activity
 } from 'lucide-react';
 import { Announcement } from '@/hooks/useAnnouncements';
 import { useSecureSession } from '@/utils/sessionStorage';
 import { useRateLimiter } from '@/utils/rateLimiter';
 import EmployeeManager from './EmployeeManager';
-import AnnouncementManager from './AnnouncementManager';
+import AnnouncementManagerSimple from './AnnouncementManagerSimple';
+import ServiceStatus from './ServiceStatus';
 
 interface AdminPanelProps {
   announcements: Announcement[];
@@ -240,7 +242,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             </DialogHeader>
             
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="announcements" className="gap-2">
                   <Megaphone className="h-4 w-4" />
                   Comunicados
@@ -249,11 +251,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   <Users className="h-4 w-4" />
                   Funcionários
                 </TabsTrigger>
+                <TabsTrigger value="status" className="gap-2">
+                  <Activity className="h-4 w-4" />
+                  Status
+                </TabsTrigger>
               </TabsList>
               
               <div className="mt-4 max-h-[70vh] overflow-y-auto">
                 <TabsContent value="announcements" className="space-y-4">
-                  <AnnouncementManager
+                  <AnnouncementManagerSimple
                     announcements={announcements}
                     onAnnouncementsChange={onAnnouncementsChange}
                     exportData={exportData}
@@ -265,6 +271,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 
                 <TabsContent value="employees" className="space-y-4">
                   <EmployeeManager />
+                </TabsContent>
+                
+                <TabsContent value="status" className="space-y-4">
+                  <ServiceStatus />
                 </TabsContent>
               </div>
             </Tabs>
