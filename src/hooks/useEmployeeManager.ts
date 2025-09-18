@@ -40,6 +40,10 @@ const DEFAULT_EMPLOYEES: Employee[] = [
   // TI
   { id: generateId(), name: "Wesley Oliveira", extension: "4722", email: "wesley.oliveira@torp.ind.br", department: "TI", lunchTime: "12:30-13:30" },
   
+  // PCP
+  { id: generateId(), name: "João Silva (PCP)", extension: "4750", email: "joao.silva@torp.ind.br", department: "PCP", lunchTime: "12:00-13:00" },
+  { id: generateId(), name: "Maria Santos (PCP)", extension: "4751", email: "maria.santos@torp.ind.br", department: "PCP", lunchTime: "11:30-12:30" },
+  
   // COMPRAS/PREFEITURA
   { id: generateId(), name: "Felipe (Supervisor Operações)", extension: "4708", email: "felipe.marciano@torp.ind.br", department: "Compras/Prefeitura", lunchTime: "13:00-14:00" },
   

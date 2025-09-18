@@ -147,7 +147,9 @@ class EmployeeSearchService {
       'controladoria': ['controladoria'],
       'compras': ['compras', 'prefeitura', 'compras/prefeitura'],
       'prefeitura': ['prefeitura', 'compras', 'compras/prefeitura'],
-      'salas': ['salas', 'sala']
+      'salas': ['salas', 'sala'],
+      'pcp': ['pcp', 'planejamento', 'controle', 'produção'],
+      'almoxarifado': ['almoxarifado', 'estoque', 'armazém', 'depósito']
     };
 
     let targetDepts: string[] = [];
