@@ -87,22 +87,6 @@
       ]
     }
   ],
-  "screenshots": [
-    {
-      "src": "./screenshots/desktop.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "TORP Huddle Space - Desktop"
-    },
-    {
-      "src": "./screenshots/mobile.png",
-      "sizes": "390x844",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "TORP Huddle Space - Mobile"
-    }
-  ],
   "prefer_related_applications": false,
   "edge_side_panel": {
     "preferred_width": 400
