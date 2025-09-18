@@ -1,4 +1,4 @@
-import vercelConfig from '../../vercel-config.js';
+import { vercelConfig } from '../../vercel-config.js';
 
 interface Document {
   id: string;
@@ -63,8 +63,8 @@ class VectorStoreService {
     }
   }
 
-  // Método específico para adicionar documentos web
-  async addWebDocuments(documents: Array<{
+  // Método para adicionar documentos (web ou internos)
+  async addDocuments(documents: Array<{
     content: string;
     metadata: any;
   }>): Promise<void> {
@@ -73,23 +73,23 @@ class VectorStoreService {
     }
 
     try {
-      console.log('[VectorStore] Adicionando documentos web:', documents.length);
-      
+      console.log('[VectorStore] Adicionando documentos:', documents.length);
+
       // Aplicar limite de chunks em produção
       const maxChunks = this.config.embedding?.maxChunks || 1000;
       let totalChunks = this.documents.length;
-      
+
       for (const doc of documents) {
         if (totalChunks >= maxChunks) {
           console.warn('[VectorStore] Limite de chunks atingido, parando adição');
           break;
         }
-        
+
         const chunks = this.chunkText(doc.content);
-        
+
         for (const chunk of chunks) {
           if (totalChunks >= maxChunks) break;
-          
+
           const embedding = await this.generateEmbedding(chunk);
           const document: Document = {
             id: this.generateId(),
@@ -97,110 +97,119 @@ class VectorStoreService {
             embedding,
             metadata: {
               ...doc.metadata,
-              type: 'web',
+              type: doc.metadata.type || 'web',
               timestamp: Date.now()
             }
           };
-          
+
           this.documents.push(document);
           totalChunks++;
         }
       }
-      
+
       // Salvar apenas em desenvolvimento
       if (!this.isVercelEnvironment) {
         await this.saveToStorage();
       }
-      
-      console.log('[VectorStore] ✅ Documentos web adicionados:', {
+
+      console.log('[VectorStore] ✅ Documentos adicionados:', {
         total: this.documents.length,
         novos: documents.length
       });
-      
+
     } catch (error) {
-      console.error('[VectorStore] ❌ Erro ao adicionar documentos web:', error);
+      console.error('[VectorStore] ❌ Erro ao adicionar documentos:', error);
+      throw error;
+    }
+  }
+
+  // Método específico para adicionar documentos web
+  async addWebDocuments(documents: Array<{
+    content: string;
+    metadata: any;
+  }>): Promise<void> {
+    return this.addDocuments(documents.map(doc => ({
+      ...doc,
+      metadata: { ...doc.metadata, type: 'web' }
+    })));
+  }
+
+  // Método para adicionar documentos internos (funcionários, comunicados, etc.)
+  async addInternalDocuments(documents: Array<{
+    id: string;
+    content: string;
+    metadata: any;
+  }>): Promise<void> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    try {
+      console.log('[VectorStore] Adicionando documentos internos:', documents.length);
+
+      for (const doc of documents) {
+        const embedding = await this.generateEmbedding(doc.content);
+
+        const document: Document = {
+          id: doc.id,
+          content: doc.content,
+          embedding,
+          metadata: {
+            ...doc.metadata,
+            timestamp: Date.now(),
+            source: 'internal'
+          }
+        };
+
+        this.documents.push(document);
+      }
+
+      if (!this.isVercelEnvironment) {
+        await this.saveToStorage();
+      }
+
+      console.log('[VectorStore] ✅ Documentos internos adicionados');
+
+    } catch (error) {
+      console.error('[VectorStore] ❌ Erro ao adicionar documentos internos:', error);
       throw error;
     }
   }
 
   // Método específico para adicionar dados de funcionários
   async addEmployeeData(employees: any[]): Promise<void> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
+    const documents = employees.map(employee => ({
+      id: `employee_${employee.id || this.generateId()}`,
+      content: this.formatEmployeeContent(employee),
+      metadata: {
+        type: 'employee',
+        employee,
+        url: `internal://employee/${employee.id}`,
+        title: `Funcionário: ${employee.name}`,
+        name: employee.name,
+        department: employee.department,
+        source: 'internal'
+      }
+    }));
 
-    try {
-      console.log('[VectorStore] Adicionando dados de funcionários:', employees.length);
-      
-      for (const employee of employees) {
-        const content = this.formatEmployeeContent(employee);
-        const embedding = await this.generateEmbedding(content);
-        
-        const document: Document = {
-          id: this.generateId(),
-          content,
-          embedding,
-          metadata: {
-            type: 'employee',
-            employee,
-            timestamp: Date.now(),
-            source: 'internal'
-          }
-        };
-        
-        this.documents.push(document);
-      }
-      
-      if (!this.isVercelEnvironment) {
-        await this.saveToStorage();
-      }
-      
-      console.log('[VectorStore] ✅ Dados de funcionários adicionados');
-      
-    } catch (error) {
-      console.error('[VectorStore] ❌ Erro ao adicionar funcionários:', error);
-      throw error;
-    }
+    return this.addInternalDocuments(documents);
   }
 
   // Método específico para adicionar comunicados
   async addAnnouncements(announcements: any[]): Promise<void> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
+    const documents = announcements.map(announcement => ({
+      id: `announcement_${announcement.id || this.generateId()}`,
+      content: this.formatAnnouncementContent(announcement),
+      metadata: {
+        type: 'announcement',
+        announcement,
+        url: `internal://announcement/${announcement.id}`,
+        title: `Comunicado: ${announcement.title}`,
+        source: 'internal'
+      }
+    }));
 
-    try {
-      console.log('[VectorStore] Adicionando comunicados:', announcements.length);
-      
-      for (const announcement of announcements) {
-        const content = this.formatAnnouncementContent(announcement);
-        const embedding = await this.generateEmbedding(content);
-        
-        const document: Document = {
-          id: this.generateId(),
-          content,
-          embedding,
-          metadata: {
-            type: 'announcement',
-            announcement,
-            timestamp: Date.now(),
-            source: 'internal'
-          }
-        };
-        
-        this.documents.push(document);
-      }
-      
-      if (!this.isVercelEnvironment) {
-        await this.saveToStorage();
-      }
-      
-      console.log('[VectorStore] ✅ Comunicados adicionados');
-      
-    } catch (error) {
-      console.error('[VectorStore] ❌ Erro ao adicionar comunicados:', error);
-      throw error;
-    }
+    return this.addInternalDocuments(documents);
   }
 
   // Busca geral com priorização
@@ -314,11 +323,16 @@ class VectorStoreService {
       
       results.sort((a, b) => b.similarity - a.similarity);
       return results.slice(0, limit);
-      
+
     } catch (error) {
       console.error('[VectorStore] ❌ Erro na busca web:', error);
       return [];
     }
+  }
+
+  // Busca híbrida (compatibilidade com RAGService)
+  async hybridSearch(query: string, limit: number = 5): Promise<SearchResult[]> {
+    return this.search(query, limit);
   }
 
   private chunkText(text: string): string[] {
@@ -472,19 +486,26 @@ class VectorStoreService {
 
   // Métodos de gerenciamento
   getStats() {
+    const uniqueUrls = new Set();
     const stats = {
       totalDocuments: this.documents.length,
+      totalUrls: 0,
       documentsByType: {} as Record<string, number>,
       lastUpdated: new Date().toISOString(),
       memoryUsage: this.memoryCache.size,
       isVercelEnvironment: this.isVercelEnvironment
     };
-    
+
     this.documents.forEach(doc => {
       const type = doc.metadata.type || 'unknown';
       stats.documentsByType[type] = (stats.documentsByType[type] || 0) + 1;
+
+      if (doc.metadata.url) {
+        uniqueUrls.add(doc.metadata.url);
+      }
     });
-    
+
+    stats.totalUrls = uniqueUrls.size;
     return stats;
   }
 
@@ -557,3 +578,4 @@ class VectorStoreService {
 // Instância singleton
 const vectorStoreService = new VectorStoreService();
 export default vectorStoreService;
+export { VectorStoreService, type Document as VectorDocument, type SearchResult };
