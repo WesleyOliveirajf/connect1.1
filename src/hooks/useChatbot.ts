@@ -8,6 +8,12 @@ export interface ChatMessage {
   sender: 'user' | 'bot';
   timestamp: Date;
   isLoading?: boolean;
+  sources?: Array<{
+    type: string;
+    content: string;
+    similarity: number;
+    metadata: any;
+  }>;
 }
 
 export interface UseChatbotReturn {
@@ -16,6 +22,7 @@ export interface UseChatbotReturn {
   isOpen: boolean;
   isLoading: boolean;
   isConnected: boolean;
+  ragStatus: 'initializing' | 'ready' | 'error' | 'disabled';
   
   // Ações
   sendMessage: (content: string) => Promise<void>;
@@ -23,6 +30,7 @@ export interface UseChatbotReturn {
   openChat: () => void;
   closeChat: () => void;
   clearMessages: () => void;
+  initializeRAG: () => Promise<void>;
   
   // Refs
   messagesEndRef: React.RefObject<HTMLDivElement>;
@@ -41,7 +49,7 @@ export const useChatbot = (): UseChatbotReturn => {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        return parsed.map((msg: { id: string; content: string; sender: 'user' | 'bot'; timestamp: string; isLoading?: boolean }) => ({
+        return parsed.map((msg: { id: string; content: string; sender: 'user' | 'bot'; timestamp: string; isLoading?: boolean; sources?: any[] }) => ({
           ...msg,
           timestamp: new Date(msg.timestamp)
         }));
@@ -55,6 +63,7 @@ export const useChatbot = (): UseChatbotReturn => {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
+  const [ragStatus, setRagStatus] = useState<'initializing' | 'ready' | 'error' | 'disabled'>('initializing');
 
   // Salvar mensagens no localStorage
   const saveMessages = useCallback((newMessages: ChatMessage[]) => {
@@ -79,6 +88,36 @@ export const useChatbot = (): UseChatbotReturn => {
     }, 100);
   }, []);
 
+  // Inicializar RAG
+  const initializeRAG = useCallback(async () => {
+    try {
+      console.log('[useChatbot] Inicializando RAG...');
+      setRagStatus('initializing');
+      
+      // Inicializa o RAG no groqService
+      await groqService.initializeRAG();
+      
+      setRagStatus('ready');
+      console.log('[useChatbot] RAG inicializado com sucesso');
+      
+      toast({
+        title: "RAG Inicializado",
+        description: "Sistema de busca inteligente está pronto para uso.",
+        variant: "default"
+      });
+      
+    } catch (error) {
+      console.error('[useChatbot] Erro ao inicializar RAG:', error);
+      setRagStatus('error');
+      
+      toast({
+        title: "Erro no RAG",
+        description: "Não foi possível inicializar o sistema de busca. Funcionando em modo básico.",
+        variant: "destructive"
+      });
+    }
+  }, [toast]);
+
   // Testar conexão inicial
   const testConnection = useCallback(async () => {
     try {
@@ -88,6 +127,7 @@ export const useChatbot = (): UseChatbotReturn => {
       
       if (!isConnected) {
         console.warn('[useChatbot] Falha na conexão com Groq');
+        setRagStatus('disabled');
         toast({
           title: "Conexão com Groq",
           description: "Não foi possível conectar à API da Groq. Verifique sua chave de API.",
@@ -95,17 +135,15 @@ export const useChatbot = (): UseChatbotReturn => {
         });
       } else {
         console.log('[useChatbot] Conexão com Groq estabelecida com sucesso');
+        // Inicializa RAG após conexão bem-sucedida
+        await initializeRAG();
       }
     } catch (error) {
       console.error('[useChatbot] Erro ao testar conexão:', error);
       setIsConnected(false);
-      toast({
-        title: "Erro de Conexão",
-        description: "Erro inesperado ao testar conexão com Groq",
-        variant: "destructive"
-      });
+      setRagStatus('error');
     }
-  }, [toast]);
+  }, [toast, initializeRAG]);
 
   // Enviar mensagem
   const sendMessage = useCallback(async (content: string) => {
@@ -118,116 +156,108 @@ export const useChatbot = (): UseChatbotReturn => {
       timestamp: new Date()
     };
 
-    // Adicionar mensagem do usuário
+    // Adiciona mensagem do usuário
     setMessages(prev => {
-      const updated = [...prev, userMessage];
-      saveMessages(updated);
-      return updated;
+      const newMessages = [...prev, userMessage];
+      saveMessages(newMessages);
+      return newMessages;
     });
 
-    // Criar mensagem de loading do bot
-    const loadingMessage: ChatMessage = {
-      id: generateMessageId(),
-      content: 'Digitando...',
+    setIsLoading(true);
+
+    // Cria mensagem temporária do bot
+    const botMessageId = generateMessageId();
+    const tempBotMessage: ChatMessage = {
+      id: botMessageId,
+      content: '',
       sender: 'bot',
       timestamp: new Date(),
       isLoading: true
     };
 
     setMessages(prev => {
-      const updated = [...prev, loadingMessage];
-      return updated;
+      const newMessages = [...prev, tempBotMessage];
+      saveMessages(newMessages);
+      return newMessages;
     });
 
-    setIsLoading(true);
-    scrollToBottom();
-
     try {
-        // Preparar histórico da conversa para Groq
-        const conversationHistory: GroqMessage[] = messages
-          .filter(msg => !msg.isLoading)
-          .slice(-10) // Últimas 10 mensagens para contexto
-          .map(msg => ({
-            role: msg.sender === 'user' ? 'user' : 'assistant',
-            content: msg.content
-          }));
+      console.log('[useChatbot] Enviando mensagem para Groq...');
+      
+      // Prepara histórico de mensagens para o Groq
+      const messageHistory: GroqMessage[] = messages.slice(-10).map(msg => ({
+        role: msg.sender === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      }));
 
-        // Enviar para Groq com RAG habilitado
-        const response = await groqService.sendMessage(content, conversationHistory, {
-          useRAG: true,
-          websiteUrl: import.meta.env.VITE_RAG_WEBSITE_URL || ''
-        });
-        
-        // Remover mensagem de loading e adicionar resposta
-         setMessages(prev => {
-           const withoutLoading = prev.filter(msg => !msg.isLoading);
-           
-           const botMessage: ChatMessage = {
-             id: generateMessageId(),
-             content: response,
-             sender: 'bot',
-             timestamp: new Date()
-           };
-           
-           const updated = [...withoutLoading, botMessage];
-           saveMessages(updated);
-           return updated;
-         });
+      // Adiciona a nova mensagem do usuário
+      messageHistory.push({
+        role: 'user',
+        content: content.trim()
+      });
 
-        setIsConnected(true);
+      // Envia para o Groq com RAG
+      const response = await groqService.sendMessage(messageHistory);
+      
+      // Atualiza mensagem do bot com a resposta
+      setMessages(prev => {
+        const newMessages = prev.map(msg => 
+          msg.id === botMessageId 
+            ? { 
+                ...msg, 
+                content: response.content, 
+                isLoading: false,
+                sources: response.sources 
+              }
+            : msg
+        );
+        saveMessages(newMessages);
+        return newMessages;
+      });
+
+      console.log('[useChatbot] Resposta recebida com sucesso');
 
     } catch (error) {
       console.error('[useChatbot] Erro ao enviar mensagem:', error);
       
-      // Remover mensagem de loading e adicionar erro
+      // Atualiza mensagem do bot com erro
       setMessages(prev => {
-        const withoutLoading = prev.filter(msg => msg.id !== loadingMessage.id);
-        
-        let errorContent = 'Desculpe, ocorreu um erro ao processar sua mensagem. Tente novamente.';
-        
-        // Personalizar mensagem de erro baseada no tipo
-        if (error instanceof Error) {
-          if (error.message.includes('API Key')) {
-            errorContent = 'Erro de autenticação. Verifique se a API Key está configurada corretamente.';
-          } else if (error.message.includes('limite')) {
-            errorContent = 'Limite de requisições excedido. Aguarde alguns minutos antes de tentar novamente.';
-          } else if (error.message.includes('servidor')) {
-            errorContent = 'Serviço temporariamente indisponível. Tente novamente em alguns minutos.';
-          }
-        }
-        
-        const errorMessage: ChatMessage = {
-          id: generateMessageId(),
-          content: errorContent,
-          sender: 'bot',
-          timestamp: new Date()
-        };
-
-        const updated = [...withoutLoading, errorMessage];
-        saveMessages(updated);
-        return updated;
+        const newMessages = prev.map(msg => 
+          msg.id === botMessageId 
+            ? { 
+                ...msg, 
+                content: 'Desculpe, ocorreu um erro ao processar sua mensagem. Tente novamente.', 
+                isLoading: false 
+              }
+            : msg
+        );
+        saveMessages(newMessages);
+        return newMessages;
       });
 
-      setIsConnected(false);
       toast({
-        title: "Erro",
-        description: error instanceof Error ? error.message : "Falha na comunicação com o chatbot",
+        title: "Erro na Comunicação",
+        description: "Não foi possível enviar a mensagem. Verifique sua conexão.",
         variant: "destructive"
       });
     } finally {
       setIsLoading(false);
       scrollToBottom();
     }
-  }, [isLoading, generateMessageId, saveMessages, scrollToBottom, toast]);
+  }, [isLoading, messages, generateMessageId, saveMessages, toast, scrollToBottom]);
 
-  // Controles do chat
+  // Ações do chat
   const toggleChat = useCallback(() => {
     setIsOpen(prev => !prev);
-  }, []);
+    if (!isOpen) {
+      scrollToBottom();
+    }
+  }, [isOpen, scrollToBottom]);
 
   const openChat = useCallback(() => {
     setIsOpen(true);
-  }, []);
+    scrollToBottom();
+  }, [scrollToBottom]);
 
   const closeChat = useCallback(() => {
     setIsOpen(false);
@@ -235,39 +265,30 @@ export const useChatbot = (): UseChatbotReturn => {
 
   const clearMessages = useCallback(() => {
     setMessages([]);
-    localStorage.removeItem(STORAGE_KEY);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (error) {
+      console.warn('[useChatbot] Erro ao limpar localStorage:', error);
+    }
+    
     toast({
-      title: "Histórico Limpo",
-      description: "Todas as mensagens foram removidas"
+      title: "Conversa Limpa",
+      description: "Todas as mensagens foram removidas.",
+      variant: "default"
     });
   }, [toast]);
 
-  // Scroll automático quando abrir o chat
-  useEffect(() => {
-    if (isOpen) {
-      scrollToBottom();
-    }
-  }, [isOpen, scrollToBottom]);
-
-  // Teste de conexão inicial
+  // Efeito para testar conexão na inicialização
   useEffect(() => {
     testConnection();
   }, [testConnection]);
 
-  // Mensagem de boas-vindas
+  // Efeito para scroll automático quando mensagens mudam
   useEffect(() => {
-    if (messages.length === 0) {
-      const welcomeMessage: ChatMessage = {
-        id: generateMessageId(),
-        content: 'Olá! Sou o Oráculo, seu assistente inteligente da TORP. Como posso ajudá-lo hoje?',
-        sender: 'bot',
-        timestamp: new Date()
-      };
-      
-      setMessages([welcomeMessage]);
-      saveMessages([welcomeMessage]);
+    if (isOpen) {
+      scrollToBottom();
     }
-  }, [messages.length, generateMessageId, saveMessages]);
+  }, [messages, isOpen, scrollToBottom]);
 
   return {
     // Estado
@@ -275,6 +296,7 @@ export const useChatbot = (): UseChatbotReturn => {
     isOpen,
     isLoading,
     isConnected,
+    ragStatus,
     
     // Ações
     sendMessage,
@@ -282,6 +304,7 @@ export const useChatbot = (): UseChatbotReturn => {
     openChat,
     closeChat,
     clearMessages,
+    initializeRAG,
     
     // Refs
     messagesEndRef

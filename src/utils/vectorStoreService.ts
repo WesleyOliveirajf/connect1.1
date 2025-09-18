@@ -1,155 +1,436 @@
-/**
- * Serviço de Vector Store para sistema RAG
- * Gerencia vetorização e armazenamento de conteúdo para busca semântica
- */
+import vercelConfig from '../../vercel-config.js';
 
-import type { ScrapedContent } from './webScrapingService';
-
-export type DocumentMetadata = {
-  type: 'web' | 'employee';
-} & (
-  | { // Web metadata
-      type: 'web';
-      url: string;
-      title: string;
-      chunkIndex: number;
-      totalChunks: number;
-      wordCount: number;
-      scrapedAt: string;
-    }
-  | { // Employee metadata
-      type: 'employee';
-      name: string;
-      department: string;
-      updatedAt: string;
-    }
-);
-
-export interface VectorDocument {
+interface Document {
   id: string;
   content: string;
   embedding: number[];
-  metadata: DocumentMetadata;
+  metadata: {
+    url?: string;
+    title?: string;
+    type?: 'web' | 'employee' | 'announcement';
+    timestamp?: number;
+    employee?: any;
+    announcement?: any;
+    source?: string;
+  };
 }
-export interface SearchResult {
-  document: VectorDocument;
+
+interface SearchResult {
+  document: Document;
   similarity: number;
+  content: string;
+  metadata: any;
 }
 
 class VectorStoreService {
-  private documents: Map<string, VectorDocument> = new Map();
+  private documents: Document[] = [];
   private isInitialized = false;
+  private isVercelEnvironment = false;
+  private memoryCache = new Map<string, any>();
+  private config: any;
 
-  /**
-   * Inicializa o serviço
-   */
-  async initialize(): Promise<void> {
-    if (this.isInitialized) return;
+  constructor() {
+    // Detectar ambiente Vercel
+    this.isVercelEnvironment = vercelConfig.isVercel();
+    this.config = vercelConfig.getConfig();
     
-    // Carrega documentos do localStorage se existirem
-    this.loadFromStorage();
-    this.isInitialized = true;
-    
-    console.log('VectorStoreService inicializado');
+    console.log('[VectorStore] Ambiente detectado:', {
+      isVercel: this.isVercelEnvironment,
+      config: this.config
+    });
   }
 
-  /**
-   * Divide texto em chunks menores para melhor processamento
-   */
-  private chunkText(text: string, maxChunkSize: number = 1000, overlap: number = 200): string[] {
-    const words = text.split(/\s+/);
-    const chunks: string[] = [];
+  async initialize(): Promise<void> {
+    if (this.isInitialized) {
+      console.log('[VectorStore] Já inicializado');
+      return;
+    }
+
+    try {
+      console.log('[VectorStore] Inicializando...');
+      
+      // Em produção/Vercel, não usar localStorage
+      if (!this.isVercelEnvironment) {
+        await this.loadFromStorage();
+      }
+      
+      this.isInitialized = true;
+      console.log('[VectorStore] ✅ Inicializado com sucesso');
+      
+    } catch (error) {
+      console.error('[VectorStore] ❌ Erro na inicialização:', error);
+      this.isInitialized = true; // Continuar mesmo com erro
+    }
+  }
+
+  // Método específico para adicionar documentos web
+  async addWebDocuments(documents: Array<{
+    content: string;
+    metadata: any;
+  }>): Promise<void> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    try {
+      console.log('[VectorStore] Adicionando documentos web:', documents.length);
+      
+      // Aplicar limite de chunks em produção
+      const maxChunks = this.config.embedding?.maxChunks || 1000;
+      let totalChunks = this.documents.length;
+      
+      for (const doc of documents) {
+        if (totalChunks >= maxChunks) {
+          console.warn('[VectorStore] Limite de chunks atingido, parando adição');
+          break;
+        }
+        
+        const chunks = this.chunkText(doc.content);
+        
+        for (const chunk of chunks) {
+          if (totalChunks >= maxChunks) break;
+          
+          const embedding = await this.generateEmbedding(chunk);
+          const document: Document = {
+            id: this.generateId(),
+            content: chunk,
+            embedding,
+            metadata: {
+              ...doc.metadata,
+              type: 'web',
+              timestamp: Date.now()
+            }
+          };
+          
+          this.documents.push(document);
+          totalChunks++;
+        }
+      }
+      
+      // Salvar apenas em desenvolvimento
+      if (!this.isVercelEnvironment) {
+        await this.saveToStorage();
+      }
+      
+      console.log('[VectorStore] ✅ Documentos web adicionados:', {
+        total: this.documents.length,
+        novos: documents.length
+      });
+      
+    } catch (error) {
+      console.error('[VectorStore] ❌ Erro ao adicionar documentos web:', error);
+      throw error;
+    }
+  }
+
+  // Método específico para adicionar dados de funcionários
+  async addEmployeeData(employees: any[]): Promise<void> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    try {
+      console.log('[VectorStore] Adicionando dados de funcionários:', employees.length);
+      
+      for (const employee of employees) {
+        const content = this.formatEmployeeContent(employee);
+        const embedding = await this.generateEmbedding(content);
+        
+        const document: Document = {
+          id: this.generateId(),
+          content,
+          embedding,
+          metadata: {
+            type: 'employee',
+            employee,
+            timestamp: Date.now(),
+            source: 'internal'
+          }
+        };
+        
+        this.documents.push(document);
+      }
+      
+      if (!this.isVercelEnvironment) {
+        await this.saveToStorage();
+      }
+      
+      console.log('[VectorStore] ✅ Dados de funcionários adicionados');
+      
+    } catch (error) {
+      console.error('[VectorStore] ❌ Erro ao adicionar funcionários:', error);
+      throw error;
+    }
+  }
+
+  // Método específico para adicionar comunicados
+  async addAnnouncements(announcements: any[]): Promise<void> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    try {
+      console.log('[VectorStore] Adicionando comunicados:', announcements.length);
+      
+      for (const announcement of announcements) {
+        const content = this.formatAnnouncementContent(announcement);
+        const embedding = await this.generateEmbedding(content);
+        
+        const document: Document = {
+          id: this.generateId(),
+          content,
+          embedding,
+          metadata: {
+            type: 'announcement',
+            announcement,
+            timestamp: Date.now(),
+            source: 'internal'
+          }
+        };
+        
+        this.documents.push(document);
+      }
+      
+      if (!this.isVercelEnvironment) {
+        await this.saveToStorage();
+      }
+      
+      console.log('[VectorStore] ✅ Comunicados adicionados');
+      
+    } catch (error) {
+      console.error('[VectorStore] ❌ Erro ao adicionar comunicados:', error);
+      throw error;
+    }
+  }
+
+  // Busca geral com priorização
+  async search(query: string, limit: number = 5): Promise<SearchResult[]> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    try {
+      const queryEmbedding = await this.generateEmbedding(query);
+      const results: SearchResult[] = [];
+      
+      // Buscar em todos os documentos
+      for (const doc of this.documents) {
+        const similarity = this.cosineSimilarity(queryEmbedding, doc.embedding);
+        const minSimilarity = this.config.search?.minSimilarity || 0.1;
+        
+        if (similarity >= minSimilarity) {
+          results.push({
+            document: doc,
+            similarity,
+            content: doc.content,
+            metadata: doc.metadata
+          });
+        }
+      }
+      
+      // Ordenar por similaridade e priorizar dados internos
+      results.sort((a, b) => {
+        // Priorizar dados internos
+        if (a.metadata.type !== 'web' && b.metadata.type === 'web') return -1;
+        if (a.metadata.type === 'web' && b.metadata.type !== 'web') return 1;
+        
+        // Depois por similaridade
+        return b.similarity - a.similarity;
+      });
+      
+      const maxResults = this.config.search?.maxResults || limit;
+      return results.slice(0, maxResults);
+      
+    } catch (error) {
+      console.error('[VectorStore] ❌ Erro na busca:', error);
+      return [];
+    }
+  }
+
+  // Busca apenas em dados internos
+  async searchInternalOnly(query: string, limit: number = 5): Promise<SearchResult[]> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    try {
+      const queryEmbedding = await this.generateEmbedding(query);
+      const results: SearchResult[] = [];
+      
+      // Buscar apenas em documentos internos
+      const internalDocs = this.documents.filter(doc => 
+        doc.metadata.type === 'employee' || doc.metadata.type === 'announcement'
+      );
+      
+      for (const doc of internalDocs) {
+        const similarity = this.cosineSimilarity(queryEmbedding, doc.embedding);
+        const minSimilarity = this.config.search?.minSimilarity || 0.1;
+        
+        if (similarity >= minSimilarity) {
+          results.push({
+            document: doc,
+            similarity,
+            content: doc.content,
+            metadata: doc.metadata
+          });
+        }
+      }
+      
+      results.sort((a, b) => b.similarity - a.similarity);
+      return results.slice(0, limit);
+      
+    } catch (error) {
+      console.error('[VectorStore] ❌ Erro na busca interna:', error);
+      return [];
+    }
+  }
+
+  // Busca apenas em dados web
+  async searchWebOnly(query: string, limit: number = 5): Promise<SearchResult[]> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    try {
+      const queryEmbedding = await this.generateEmbedding(query);
+      const results: SearchResult[] = [];
+      
+      // Buscar apenas em documentos web
+      const webDocs = this.documents.filter(doc => doc.metadata.type === 'web');
+      
+      for (const doc of webDocs) {
+        const similarity = this.cosineSimilarity(queryEmbedding, doc.embedding);
+        const minSimilarity = this.config.search?.minSimilarity || 0.1;
+        
+        if (similarity >= minSimilarity) {
+          results.push({
+            document: doc,
+            similarity,
+            content: doc.content,
+            metadata: doc.metadata
+          });
+        }
+      }
+      
+      results.sort((a, b) => b.similarity - a.similarity);
+      return results.slice(0, limit);
+      
+    } catch (error) {
+      console.error('[VectorStore] ❌ Erro na busca web:', error);
+      return [];
+    }
+  }
+
+  private chunkText(text: string): string[] {
+    const chunkSize = this.config.embedding?.chunkSize || 1000;
+    const overlap = this.config.embedding?.overlap || 100;
     
-    for (let i = 0; i < words.length; i += maxChunkSize - overlap) {
-      const chunk = words.slice(i, i + maxChunkSize).join(' ');
-      if (chunk.trim().length > 50) { // Só inclui chunks com conteúdo significativo
+    if (text.length <= chunkSize) {
+      return [text];
+    }
+
+    const chunks: string[] = [];
+    let start = 0;
+
+    while (start < text.length) {
+      const end = Math.min(start + chunkSize, text.length);
+      let chunk = text.slice(start, end);
+
+      // Tentar quebrar em uma frase completa
+      if (end < text.length) {
+        const lastSentence = chunk.lastIndexOf('.');
+        const lastNewline = chunk.lastIndexOf('\n');
+        const breakPoint = Math.max(lastSentence, lastNewline);
+        
+        if (breakPoint > start + chunkSize * 0.5) {
+          chunk = text.slice(start, breakPoint + 1);
+          start = breakPoint + 1;
+        } else {
+          start = end - overlap;
+        }
+      } else {
+        start = end;
+      }
+
+      if (chunk.trim()) {
         chunks.push(chunk.trim());
       }
     }
-    
-    if (chunks.length > 0) {
-      return chunks;
-    }
-    return [text]; // Fallback para texto original
+
+    return chunks.length > 0 ? chunks : [text];
   }
 
-  /**
-   * Gera embedding melhorado com características específicas para dados internos
-   * Prioriza informações relevantes da empresa (funcionários, departamentos, comunicados)
-   */
-  private generateEmbedding(text: string): number[] {
-    const cleanText = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
-    const words = cleanText.split(/\s+/).filter(w => w.length > 2);
-    
-    // Cria um vetor de 384 dimensões (tamanho comum para embeddings)
-    const embedding = new Array(384).fill(0);
-    
-    // Características baseadas em palavras
-    const wordFreq = new Map<string, number>();
-    words.forEach(word => {
-      wordFreq.set(word, (wordFreq.get(word) || 0) + 1);
-    });
-    
-    // Termos importantes da empresa TORP
-    const companyTerms = [
-      'torp', 'funcionario', 'funcionária', 'departamento', 'setor', 'ramal', 'extensao', 'email',
-      'rh', 'financeiro', 'comercial', 'marketing', 'controladoria', 'compras', 'prefeitura',
-      'gente', 'gestao', 'administrativo', 'malharia', 'producao', 'seguranca', 'enfermagem',
-      'reuniao', 'comunicado', 'manutencao', 'treinamento', 'almoco', 'horario', 'telefone'
-    ];
-    
-    // Preenche embedding com características do texto
-    let index = 0;
-    
-    // Frequência de palavras (primeiras 80 dimensões)
-    for (const [word, freq] of Array.from(wordFreq.entries()).slice(0, 80)) {
-      if (index < 80) {
-        embedding[index] = Math.log(freq + 1) / Math.log(words.length + 1);
-        index++;
+  private async generateEmbedding(text: string): Promise<number[]> {
+    try {
+      // Usar cache em memória para embeddings
+      const cacheKey = `embedding_${this.hashString(text)}`;
+      if (this.memoryCache.has(cacheKey)) {
+        return this.memoryCache.get(cacheKey);
       }
-    }
-    
-    // Boost para termos da empresa (dimensões 80-120)
-    companyTerms.forEach((term, i) => {
-      if (index < 120) {
-        const termFreq = wordFreq.get(term) || 0;
-        embedding[index] = termFreq > 0 ? Math.log(termFreq + 1) * 2 : 0; // Boost x2 para termos da empresa
-        index++;
+      
+      const dimensions = this.config.embedding?.dimensions || 384;
+      
+      // Gerar embedding otimizado
+      const words = text.toLowerCase().split(/\s+/);
+      const embedding = new Array(dimensions).fill(0);
+      
+      // Termos importantes da empresa TORP
+      const companyTerms = [
+        'torp', 'tecnologia', 'organização', 'recursos', 'pessoas',
+        'equipe', 'colaborador', 'funcionário', 'departamento',
+        'comercial', 'administrativo', 'marketing', 'ti', 'rh'
+      ];
+      
+      // Componente de frequência de palavras
+      const wordFreq = new Map<string, number>();
+      words.forEach(word => {
+        wordFreq.set(word, (wordFreq.get(word) || 0) + 1);
+      });
+      
+      // Preencher embedding
+      words.forEach((word, index) => {
+        const freq = wordFreq.get(word) || 1;
+        const isCompanyTerm = companyTerms.includes(word);
+        const boost = isCompanyTerm ? 2.0 : 1.0;
+        
+        for (let i = 0; i < dimensions; i++) {
+          const hash = this.hashString(word + i) % 1000000;
+          embedding[i] += (hash / 1000000) * freq * boost;
+        }
+      });
+      
+      // Adicionar características estatísticas
+      const avgWordLength = words.reduce((sum, word) => sum + word.length, 0) / words.length;
+      const uniqueWords = new Set(words).size;
+      
+      for (let i = 0; i < Math.min(10, dimensions); i++) {
+        embedding[i] += avgWordLength * 0.1;
+        embedding[i + 10] += uniqueWords * 0.01;
       }
-    });
-    
-    // Características estatísticas (próximas 50 dimensões)
-    if (index < 150) {
-      embedding[index++] = words.length / 1000; // Comprimento normalizado
-      embedding[index++] = wordFreq.size / words.length; // Diversidade lexical
-      embedding[index++] = (text.match(/[.!?]/g) || []).length / words.length; // Densidade de pontuação
-      embedding[index++] = (text.match(/[A-Z]/g) || []).length / text.length; // Densidade de maiúsculas
-      embedding[index++] = (text.match(/\d/g) || []).length / text.length; // Densidade numérica
-    }
-    
-    // Hash-based features (dimensões restantes)
-    for (let i = index; i < 384; i++) {
-      let hash = 0;
-      const str = text + i.toString();
-      for (let j = 0; j < str.length; j++) {
-        const char = str.charCodeAt(j);
-        hash = ((hash << 5) - hash) + char;
-        hash &= hash; // Convert to 32-bit integer
+      
+      // Normalizar vetor
+      const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
+      if (magnitude > 0) {
+        for (let i = 0; i < embedding.length; i++) {
+          embedding[i] /= magnitude;
+        }
       }
-      embedding[i] = (hash % 1000) / 1000; // Normaliza entre 0 e 1
+      
+      // Armazenar no cache com limite
+      if (this.memoryCache.size < (this.config.memoryCache?.maxItems || 1000)) {
+        this.memoryCache.set(cacheKey, embedding);
+      }
+      
+      return embedding;
+      
+    } catch (error) {
+      console.error('[VectorStore] Erro ao gerar embedding:', error);
+      // Retornar embedding aleatório como fallback
+      const dimensions = this.config.embedding?.dimensions || 384;
+      return Array.from({ length: dimensions }, () => Math.random() - 0.5);
     }
-    
-    // Normaliza o vetor
-    const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
-    if (magnitude > 0) {
-      return embedding.map(val => val / magnitude);
-    }
-    return embedding;
   }
 
-  /**
-   * Calcula similaridade de cosseno entre dois vetores
-   */
   private cosineSimilarity(a: number[], b: number[]): number {
     if (a.length !== b.length) return 0;
     
@@ -164,302 +445,115 @@ class VectorStoreService {
     }
     
     const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
-    if (magnitude > 0) {
-      return dotProduct / magnitude;
-    }
-    return 0;
+    return magnitude === 0 ? 0 : dotProduct / magnitude;
   }
 
-  /**
-   * Adiciona documentos ao vector store
-   */
-  async addDocuments(scrapedContent: ScrapedContent[]): Promise<void> {
-    console.log(`Adicionando ${scrapedContent.length} documentos ao vector store`);
-    
-    for (const content of scrapedContent) {
-      const chunks = this.chunkText(content.content);
-      
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        const embedding = this.generateEmbedding(chunk);
-        
-        const document: VectorDocument = {
-          id: `${content.url}#chunk-${i}`,
-          content: chunk,
-          embedding,
-          metadata: {
-            url: content.url,
-            title: content.title,
-            chunkIndex: i,
-            totalChunks: chunks.length,
-            wordCount: chunk.split(/\s+/).length,
-            scrapedAt: content.metadata.scrapedAt
-          }
-        };
-        
-        this.documents.set(document.id, document);
-      }
-    }
-    
-    // Salva no localStorage
-    this.saveToStorage();
-    
-    console.log(`Vector store atualizado: ${this.documents.size} chunks indexados`);
+  private formatEmployeeContent(employee: any): string {
+    return `${employee.name || ''} ${employee.department || ''} ${employee.position || ''} ${employee.email || ''} ${employee.phone || ''} ${employee.extension || ''}`.trim();
   }
 
-  /**
-   * Busca documentos similares
-   */
-  async searchSimilar(query: string, limit: number = 5, minSimilarity: number = 0.1): Promise<SearchResult[]> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-    
-    if (this.documents.size === 0) {
-      console.warn('Vector store vazio. Execute o scraping primeiro.');
-      return [];
-    }
-    
-    const queryEmbedding = this.generateEmbedding(query);
-    const results: SearchResult[] = [];
-    
-    for (const document of this.documents.values()) {
-      const similarity = this.cosineSimilarity(queryEmbedding, document.embedding);
-      
-      if (similarity >= minSimilarity) {
-        results.push({ document, similarity });
-      }
-    }
-    
-    // Ordena por similaridade (maior primeiro)
-    results.sort((a, b) => b.similarity - a.similarity);
-    
-    return results.slice(0, limit);
+  private formatAnnouncementContent(announcement: any): string {
+    return `${announcement.title || ''} ${announcement.content || ''} ${announcement.date || ''}`.trim();
   }
 
-  /**
-   * Busca por palavras-chave
-   */
-  async searchByKeywords(keywords: string[], limit: number = 5): Promise<SearchResult[]> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-    
-    const results: SearchResult[] = [];
-    const keywordSet = new Set(keywords.map(k => k.toLowerCase()));
-    
-    for (const document of this.documents.values()) {
-      const content = document.content.toLowerCase();
-      let score = 0;
-      
-      // Conta ocorrências de palavras-chave
-      for (const keyword of keywordSet) {
-        const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
-        const matches = content.match(regex);
-        if (matches) {
-          score += matches.length;
-        }
-      }
-      
-      if (score > 0) {
-        // Normaliza score baseado no comprimento do documento
-        const normalizedScore = score / document.content.split(/\s+/).length;
-        results.push({ document, similarity: normalizedScore });
-      }
-    }
-    
-    results.sort((a, b) => b.similarity - a.similarity);
-    return results.slice(0, limit);
+  private generateId(): string {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2);
   }
 
-  /**
-   * Busca híbrida melhorada com priorização para dados internos da empresa
-   */
-  async hybridSearch(query: string, limit: number = 5): Promise<SearchResult[]> {
-    const [semanticResults, keywordResults] = await Promise.all([
-      this.searchSimilar(query, limit * 3),
-      this.searchByKeywords(query.split(/\s+/), limit * 3)
-    ]);
-    
-    // Combina resultados com pesos
-    const combinedResults = new Map<string, SearchResult>();
-    
-    // Adiciona resultados semânticos (peso 0.7)
-    for (const result of semanticResults) {
-      const baseScore = result.similarity * 0.7;
-      const boostedScore = this.applyInternalDataBoost(result, baseScore, query);
-      
-      combinedResults.set(result.document.id, {
-        document: result.document,
-        similarity: boostedScore
-      });
+  private hashString(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
     }
-    
-    // Adiciona/combina resultados de palavras-chave (peso 0.3)
-    for (const result of keywordResults) {
-      const existing = combinedResults.get(result.document.id);
-      const baseScore = result.similarity * 0.3;
-      const boostedScore = this.applyInternalDataBoost(result, baseScore, query);
-      
-      if (existing) {
-        existing.similarity = Math.max(existing.similarity, boostedScore);
-      } else {
-        combinedResults.set(result.document.id, {
-          document: result.document,
-          similarity: boostedScore
-        });
-      }
-    }
-    
-    const finalResults = Array.from(combinedResults.values());
-    finalResults.sort((a, b) => b.similarity - a.similarity);
-    
-    return finalResults.slice(0, limit);
+    return Math.abs(hash);
   }
 
-  /**
-   * Aplica boost para dados internos da empresa baseado no tipo e relevância
-   */
-  private applyInternalDataBoost(result: SearchResult, baseScore: number, query: string): number {
-    let boostedScore = baseScore;
-    const queryLower = query.toLowerCase();
-    
-    // Boost para dados de funcionários
-    if (result.document.metadata.type === 'employee') {
-      boostedScore *= 1.5; // Boost de 50% para funcionários
-      
-      // Boost adicional se a query menciona termos relacionados a funcionários
-      const employeeTerms = ['funcionario', 'funcionária', 'ramal', 'extensao', 'email', 'departamento', 'setor'];
-      if (employeeTerms.some(term => queryLower.includes(term))) {
-        boostedScore *= 1.3;
-      }
-      
-      // Boost se menciona nome específico ou departamento
-      if (result.document.metadata.type === 'employee') {
-        const empMeta = result.document.metadata as Extract<DocumentMetadata, { type: 'employee' }>;
-        if (queryLower.includes(empMeta.name.toLowerCase()) || 
-            queryLower.includes(empMeta.department.toLowerCase())) {
-          boostedScore *= 1.8;
-        }
-      }
-    }
-    
-    // Boost para comunicados/anúncios
-    if (result.document.metadata.type === 'web' && 
-        result.document.content.toLowerCase().includes('comunicado')) {
-      boostedScore *= 1.3; // Boost de 30% para comunicados
-    }
-    
-    // Boost para conteúdo recente (últimos 30 dias)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    if (result.document.metadata.type === 'employee') {
-      const empMeta = result.document.metadata as Extract<DocumentMetadata, { type: 'employee' }>;
-      if (new Date(empMeta.updatedAt) > thirtyDaysAgo) {
-        boostedScore *= 1.1; // Boost de 10% para dados recentes
-      }
-    }
-    
-    return Math.min(boostedScore, 1.0); // Limita o score máximo a 1.0
-  }
-
-  /**
-   * Obtém estatísticas do vector store
-   */
-  getStats(): {
-    totalDocuments: number;
-    totalUrls: number;
-    avgChunksPerUrl: number;
-    lastUpdated: string | null;
-  } {
-    const urls = new Set<string>();
-    let lastUpdated: string | null = null;
-    
-    for (const doc of this.documents.values()) {
-      urls.add(doc.metadata.url);
-      if (!lastUpdated || doc.metadata.scrapedAt > lastUpdated) {
-        lastUpdated = doc.metadata.scrapedAt;
-      }
-    }
-    
-    return {
-      totalDocuments: this.documents.size,
-      totalUrls: urls.size,
-      avgChunksPerUrl: urls.size > 0 ? this.documents.size / urls.size : 0,
-      lastUpdated
+  // Métodos de gerenciamento
+  getStats() {
+    const stats = {
+      totalDocuments: this.documents.length,
+      documentsByType: {} as Record<string, number>,
+      lastUpdated: new Date().toISOString(),
+      memoryUsage: this.memoryCache.size,
+      isVercelEnvironment: this.isVercelEnvironment
     };
+    
+    this.documents.forEach(doc => {
+      const type = doc.metadata.type || 'unknown';
+      stats.documentsByType[type] = (stats.documentsByType[type] || 0) + 1;
+    });
+    
+    return stats;
   }
 
-  /**
-   * Limpa o vector store
-   */
   clear(): void {
-    this.documents.clear();
-    localStorage.removeItem('oraculo_vector_store');
-    console.log('Vector store limpo');
-  }
-
-  /**
-   * Salva dados no localStorage
-   */
-  private saveToStorage(): void {
-    try {
-      const data = {
-        documents: Array.from(this.documents.entries()),
-        timestamp: new Date().toISOString()
-      };
-      
-      localStorage.setItem('oraculo_vector_store', JSON.stringify(data));
-    } catch (error) {
-      console.warn('Erro ao salvar vector store:', error);
+    this.documents = [];
+    this.memoryCache.clear();
+    
+    // Limpar localStorage apenas em desenvolvimento
+    if (!this.isVercelEnvironment && typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('vectorstore_documents');
+        console.log('[VectorStore] ✅ Cache limpo');
+      } catch (error) {
+        console.warn('[VectorStore] Erro ao limpar localStorage:', error);
+      }
     }
   }
 
-  /**
-   * Carrega dados do localStorage
-   */
-  private loadFromStorage(): void {
+  hasData(): boolean {
+    return this.documents.length > 0;
+  }
+
+  getDocument(id: string): Document | null {
+    return this.documents.find(doc => doc.id === id) || null;
+  }
+
+  removeDocument(id: string): boolean {
+    const index = this.documents.findIndex(doc => doc.id === id);
+    if (index !== -1) {
+      this.documents.splice(index, 1);
+      if (!this.isVercelEnvironment) {
+        this.saveToStorage();
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // Métodos de armazenamento (apenas para desenvolvimento)
+  private async loadFromStorage(): Promise<void> {
+    if (this.isVercelEnvironment || typeof window === 'undefined') {
+      return;
+    }
+    
     try {
-      const stored = localStorage.getItem('oraculo_vector_store');
+      const stored = localStorage.getItem('vectorstore_documents');
       if (stored) {
-        const data = JSON.parse(stored);
-        this.documents = new Map(data.documents);
-        console.log(`Vector store carregado: ${this.documents.size} documentos`);
+        this.documents = JSON.parse(stored);
+        console.log('[VectorStore] ✅ Dados carregados do localStorage:', this.documents.length);
       }
     } catch (error) {
-      console.warn('Erro ao carregar vector store:', error);
-      this.documents.clear();
+      console.warn('[VectorStore] Erro ao carregar do localStorage:', error);
     }
   }
 
-  /**
-   * Adiciona documentos internos (não web)
-   */
-  async addInternalDocuments(docs: Array<{id: string; content: string; metadata: Omit<DocumentMetadata, 'type'> & {type: 'employee'}}>): Promise<void> {
-    for (const doc of docs) {
-      const chunks = this.chunkText(doc.content);
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        const embedding = this.generateEmbedding(chunk);
-        const fullMetadata: DocumentMetadata = {
-          type: doc.metadata.type,
-          ...doc.metadata,
-          chunkIndex: i,
-          totalChunks: chunks.length,
-          wordCount: chunk.split(/\s+/).length,
-        };
-        const document: VectorDocument = {
-          id: `${doc.id}#chunk-${i}`,
-          content: chunk,
-          embedding,
-          metadata: fullMetadata
-        };
-        this.documents.set(document.id, document);
-      }
+  private async saveToStorage(): Promise<void> {
+    if (this.isVercelEnvironment || typeof window === 'undefined') {
+      return;
     }
-    this.saveToStorage();
+    
+    try {
+      localStorage.setItem('vectorstore_documents', JSON.stringify(this.documents));
+      console.log('[VectorStore] ✅ Dados salvos no localStorage');
+    } catch (error) {
+      console.warn('[VectorStore] Erro ao salvar no localStorage:', error);
+    }
   }
 }
 
-export default VectorStoreService;
+// Instância singleton
+const vectorStoreService = new VectorStoreService();
+export default vectorStoreService;
