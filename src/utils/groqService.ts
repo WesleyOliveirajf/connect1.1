@@ -42,6 +42,9 @@ interface ServiceStatus {
   lastSuccessfulConnection: Date | null;
 }
 
+// Importação do serviço de busca de funcionários
+import employeeSearchService from './employeeSearchService';
+
 class GroqService {
   private apiKey: string;
   private baseUrl = 'https://api.groq.com/openai/v1';
@@ -116,76 +119,70 @@ class GroqService {
         metadata: any;
       }> = [];
 
-      // Usar RAG se disponível
-      if (this.ragService) {
+      // Determinar tipo de consulta e usar serviço apropriado
+      const isEmployeeQuery = this.isEmployeeRelatedQuery(userMessage);
+
+      if (isEmployeeQuery) {
+        // Busca direta de funcionários
         try {
-          console.log('[GroqService] Buscando contexto RAG...');
-          
-          // Detectar tipo de consulta
-          const isEmployeeQuery = this.isEmployeeQuery(userMessage);
-          const isAnnouncementQuery = this.isAnnouncementQuery(userMessage);
-          
-          if (isEmployeeQuery) {
-            console.log('[GroqService] Detectada consulta sobre funcionários');
-            const employeeResults = await this.ragService.searchInternalDataOnly(userMessage);
-            
-            if (employeeResults.relevantContent.length > 0) {
-              ragContext = this.formatEmployeeContext(employeeResults.relevantContent);
-              sources = employeeResults.relevantContent.map(item => ({
-                type: 'employee',
-                content: item.content,
-                similarity: item.similarity,
-                metadata: item.metadata
-              }));
-            }
-          } else if (isAnnouncementQuery) {
-            console.log('[GroqService] Detectada consulta sobre comunicados');
-            const announcementResults = await this.ragService.searchInternalDataOnly(userMessage);
-            
-            if (announcementResults.relevantContent.length > 0) {
-              ragContext = this.formatAnnouncementContext(announcementResults.relevantContent);
-              sources = announcementResults.relevantContent.map(item => ({
-                type: 'announcement',
-                content: item.content,
-                similarity: item.similarity,
-                metadata: item.metadata
-              }));
-            }
+          console.log('[GroqService] 👥 Busca de funcionários');
+          const employeeResults = employeeSearchService.searchForChatbot(userMessage);
+
+          if (employeeResults.hasResults) {
+            ragContext = this.formatEmployeeContext(employeeResults, userMessage);
+            sources = [{
+              type: 'employees',
+              content: `${employeeResults.employees.length} funcionário(s) encontrado(s)`,
+              similarity: 1.0,
+              metadata: { type: 'internal', count: employeeResults.employees.length }
+            }];
           } else {
-            console.log('[GroqService] Usando busca RAG geral');
-            const ragResults = await this.ragService.searchContext(userMessage);
-            
-            if (ragResults.relevantContent.length > 0) {
-              ragContext = this.formatGeneralContext(ragResults.relevantContent);
-              sources = ragResults.relevantContent.map(item => ({
-                type: item.metadata?.type || 'web',
-                content: item.content,
-                similarity: item.similarity,
-                metadata: item.metadata
-              }));
-            }
+            ragContext = `Nenhum funcionário encontrado para "${userMessage}"`;
           }
-          
-          console.log('[GroqService] Contexto RAG encontrado:', {
+
+          console.log('[GroqService] Contexto de funcionários:', {
+            hasResults: employeeResults.hasResults,
+            count: employeeResults.employees.length
+          });
+        } catch (error) {
+          console.error('[GroqService] Erro na busca de funcionários:', error);
+          ragContext = 'Erro ao buscar informações de funcionários.';
+        }
+      } else if (this.ragService) {
+        // Busca web com RAG
+        try {
+          console.log('[GroqService] 🌐 Buscando contexto web...');
+          const ragResults = await this.ragService.searchWebContext(userMessage);
+
+          if (ragResults.relevantContent.length > 0) {
+            ragContext = this.ragService.formatWebContextForLLM(ragResults);
+            sources = ragResults.relevantContent.map(item => ({
+              type: 'web',
+              content: item.content,
+              similarity: item.similarity,
+              metadata: { url: item.source, title: item.title }
+            }));
+          }
+
+          console.log('[GroqService] Contexto web:', {
             contextLength: ragContext.length,
             sourcesCount: sources.length
           });
-          
+
         } catch (ragError) {
-          console.error('[GroqService] Erro ao buscar contexto RAG:', ragError);
+          console.error('[GroqService] Erro ao buscar contexto web:', ragError);
         }
       }
 
-      const systemPrompt = `Você é o Oráculo, um assistente inteligente da TORP (Tecnologia, Organização, Recursos e Pessoas).
-Seja útil, preciso e profissional em suas respostas.
+      const systemPrompt = `Você é o Oráculo, assistente inteligente da TORP (Tecnologia, Organização, Recursos e Pessoas).
+Seja útil, preciso e profissional.
 
-INSTRUÇÕES IMPORTANTES:
-- Quando houver contexto interno abaixo (funcionários/comunicados/processos), priorize exclusivamente esse conteúdo para responder.
-- Se a informação solicitada não estiver no contexto fornecido, diga claramente que não está disponível nos dados internos.
-- Não invente dados sobre funcionários, comunicados ou processos internos.
-- Para informações gerais sobre a empresa, use o contexto web quando disponível.
+INSTRUÇÕES:
+- Para consultas sobre FUNCIONÁRIOS: use EXCLUSIVAMENTE o contexto fornecido. Não invente dados.
+- Para outras consultas: use o contexto web quando disponível.
+- Se a informação não estiver no contexto, informe que não está disponível.
 
-${ragContext ? `CONTEXTO RELEVANTE:\n${ragContext}` : 'Nenhum contexto específico encontrado.'}`;
+${ragContext ? `CONTEXTO RELEVANTE:\n${ragContext}` : 'Nenhum contexto encontrado.'}`;
 
       const finalMessages: GroqMessage[] = [
         { role: 'system', content: systemPrompt },
@@ -196,8 +193,9 @@ ${ragContext ? `CONTEXTO RELEVANTE:\n${ragContext}` : 'Nenhum contexto específi
       console.log('[GroqService] Enviando para Groq:', {
         model: this.model,
         messageCount: finalMessages.length,
-        hasRAG: !!ragContext,
-        sourcesCount: sources.length
+        hasContext: !!ragContext,
+        sourcesCount: sources.length,
+        queryType: isEmployeeQuery ? 'employees' : 'web'
       });
 
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -259,59 +257,6 @@ ${ragContext ? `CONTEXTO RELEVANTE:\n${ragContext}` : 'Nenhum contexto específi
     }
   }
 
-  // Métodos auxiliares para detectar tipos de consulta
-  private isEmployeeQuery(message: string): boolean {
-    const employeeKeywords = [
-      'funcionário', 'funcionária', 'funcionarios', 'funcionárias',
-      'colaborador', 'colaboradora', 'colaboradores', 'colaboradoras',
-      'equipe', 'time', 'staff', 'pessoa', 'pessoas',
-      'contato', 'telefone', 'email', 'ramal',
-      'departamento', 'setor', 'área', 'cargo', 'função'
-    ];
-    
-    const lowerMessage = message.toLowerCase();
-    return employeeKeywords.some(keyword => lowerMessage.includes(keyword));
-  }
-
-  private isAnnouncementQuery(message: string): boolean {
-    const announcementKeywords = [
-      'comunicado', 'comunicados', 'aviso', 'avisos',
-      'notícia', 'notícias', 'informação', 'informações',
-      'anúncio', 'anúncios', 'novidade', 'novidades',
-      'atualização', 'atualizações'
-    ];
-    
-    const lowerMessage = message.toLowerCase();
-    return announcementKeywords.some(keyword => lowerMessage.includes(keyword));
-  }
-
-  // Métodos para formatar contexto
-  private formatEmployeeContext(results: any[]): string {
-    return results.map(result => {
-      const employee = result.metadata?.employee || {};
-      return `Funcionário: ${employee.name || 'N/A'}
-Cargo: ${employee.position || 'N/A'}
-Departamento: ${employee.department || 'N/A'}
-Email: ${employee.email || 'N/A'}
-Telefone: ${employee.phone || 'N/A'}`;
-    }).join('\n\n');
-  }
-
-  private formatAnnouncementContext(results: any[]): string {
-    return results.map(result => {
-      const announcement = result.metadata?.announcement || {};
-      return `Comunicado: ${announcement.title || 'N/A'}
-Data: ${announcement.date || 'N/A'}
-Conteúdo: ${result.content}`;
-    }).join('\n\n');
-  }
-
-  private formatGeneralContext(results: any[]): string {
-    return results.map(result => {
-      return `Fonte: ${result.metadata?.url || result.metadata?.source || 'Interno'}
-Conteúdo: ${result.content}`;
-    }).join('\n\n');
-  }
 
   async testConnection(): Promise<boolean> {
     if (!this.apiKey) {
@@ -414,25 +359,11 @@ Conteúdo: ${result.content}`;
   }
 
   // Métodos para gerenciar RAG
-  async indexEmployeeData(employees: any[]): Promise<void> {
+  async indexWebsite(forceRefresh = false): Promise<any> {
     if (!this.ragService) {
       throw new Error('RAG Service não inicializado');
     }
-    await this.ragService.indexEmployeeData(employees);
-  }
-
-  async indexAnnouncements(announcements: any[]): Promise<void> {
-    if (!this.ragService) {
-      throw new Error('RAG Service não inicializado');
-    }
-    await this.ragService.indexAnnouncements(announcements);
-  }
-
-  async indexWebsite(url: string): Promise<void> {
-    if (!this.ragService) {
-      throw new Error('RAG Service não inicializado');
-    }
-    await this.ragService.indexWebsite(url);
+    return await this.ragService.indexWebsite(forceRefresh);
   }
 
   getRagStats() {
@@ -441,6 +372,90 @@ Conteúdo: ${result.content}`;
 
   clearRagData(): void {
     this.ragService?.clear();
+  }
+
+  /**
+   * Detecta se a consulta é sobre funcionários
+   */
+  private isEmployeeRelatedQuery(message: string): boolean {
+    const lowerMessage = message.toLowerCase();
+    const employeeKeywords = [
+      // Nomes e identificação
+      'funcionário', 'funcionarios', 'funcionária', 'funcionárias',
+      'colaborador', 'colaboradora', 'colaboradores',
+      'pessoa', 'pessoas', 'quem é', 'quem são',
+
+      // Departamentos
+      'ti', 'comercial', 'administrativo', 'marketing',
+      'gente e gestão', 'rh', 'recursos humanos',
+      'controladoria', 'compras', 'prefeitura', 'salas',
+
+      // Contato e informações
+      'ramal', 'ramais', 'extensão', 'telefone', 'contato',
+      'email', 'e-mail', 'endereco',
+
+      // Horários
+      'almoço', 'almoco', 'horário', 'horario', 'hora',
+
+      // Consultas quantitativas
+      'quantos funcionários', 'quantas pessoas', 'quantidade',
+      'total de funcionários', 'número de pessoas',
+
+      // Consultas específicas
+      'trabalha', 'atende', 'responsável', 'encarregado',
+      'departamento', 'setor', 'área',
+
+      // Ramais específicos (4 dígitos começando com 4)
+      '47', '48' // Padrões comuns dos ramais da TORP
+    ];
+
+    // Detecta também ramais no formato 4xxx
+    const hasExtensionPattern = /\b4\d{3}\b/.test(lowerMessage);
+
+    return employeeKeywords.some(keyword => lowerMessage.includes(keyword)) || hasExtensionPattern;
+  }
+
+  /**
+   * Formata contexto de funcionários para o LLM
+   */
+  private formatEmployeeContext(employeeResults: any, query: string): string {
+    const { summary, employees, departmentBreakdown, hasResults } = employeeResults;
+
+    if (!hasResults) {
+      return `=== 👥 FUNCIONÁRIOS DA TORP ===\n\n${summary}\n\n❓ Nenhum funcionário encontrado para "${query}"`;
+    }
+
+    let context = `=== 👥 FUNCIONÁRIOS DA TORP (${employees.length} encontrados) ===\n\n`;
+    context += `📊 ${summary}\n\n`;
+
+    if (departmentBreakdown) {
+      context += `${departmentBreakdown}\n\n`;
+    }
+
+    // Se é consulta sobre contagem/estatísticas
+    const isCountQuery = /quantos?|quantidade|total|número/.test(query.toLowerCase());
+
+    if (!isCountQuery && employees.length <= 5) {
+      // Lista detalhada para poucos funcionários
+      context += '📋 DETALHES:\n\n';
+      employees.forEach((emp: any, index: number) => {
+        context += `${index + 1}. **${emp.name}**\n`;
+        context += `   Departamento: ${emp.department}\n`;
+        context += `   Ramal: ${emp.extension}\n`;
+        if (emp.email && emp.email !== 'xxx') {
+          context += `   Email: ${emp.email}\n`;
+        }
+        if (emp.lunchTime) {
+          context += `   Horário de Almoço: ${emp.lunchTime}\n`;
+        }
+        context += '\n';
+      });
+    }
+
+    context += `🔍 Consulta: "${query}"\n`;
+    context += 'ℹ️ INSTRUÇÕES: Responda com base nas informações dos funcionários da TORP. Seja preciso e direto.';
+
+    return context;
   }
 }
 
