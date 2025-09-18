@@ -11,16 +11,6 @@ const generateId = () => {
 
 // Dados padrão dos funcionários
 const DEFAULT_EMPLOYEES: Employee[] = [
-  // FUNCIONÁRIO TESTE - DEMONSTRAÇÃO PARA DIRETORIA
-  { 
-    id: generateId(),
-    name: "João Silva (TESTE - Demonstração)", 
-    extension: "4999", 
-    email: "joao.teste@torp.ind.br", 
-    department: "TI", 
-    lunchTime: "07:00-16:00" 
-  },
-  
   // GENTE E GESTÃO
   { id: generateId(), name: "Flávia (Diretora)", extension: "4723", email: "xxx", department: "Gente e Gestão" },
   { id: generateId(), name: "Bruno (RH)", extension: "4727", email: "bruno.oliveira@torp.ind.br", department: "Gente e Gestão", lunchTime: "12:00-13:00" },

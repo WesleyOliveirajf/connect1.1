@@ -78,8 +78,8 @@ const Index = () => {
         </main>
         <Footer />
         
-        {/* Chatbot */}
-        <Chatbot />
+        {/* Chatbot - Ocultado temporariamente */}
+        {/* <Chatbot /> */}
       </div>
     </ErrorBoundary>
   );

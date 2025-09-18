@@ -25,50 +25,8 @@ const Announcements = () => {
     setExpandedItems(newExpanded);
   };
   
-  const announcements: Announcement[] = [
-    {
-      title: "Manutenção Programada - Setor de Malharia",
-      content: "Manutenção preventiva dos equipamentos de malharia será realizada no sábado das 8h às 12h. Produção será suspensa durante este período.",
-      priority: "alta",
-      date: "21 Dez, 2024"
-    },
-    {
-      title: "Nova Coleção Primavera/Verão 2025",
-      content: "Reunião de apresentação da nova coleção para toda a equipe comercial e de criação. Sexta-feira às 14h na sala de reuniões.",
-      priority: "alta",
-      date: "18 Dez, 2024"
-    },
-    {
-      title: "Confraternização de Final de Ano",
-      content: "Estamos organizando nossa festa de confraternização! Será no dia 20/12 às 18h no refeitório. Confirme presença com o RH.",
-      priority: "média",
-      date: "15 Dez, 2024"
-    },
-    {
-      title: "Treinamento NR-12 - Segurança em Máquinas",
-      content: "Treinamento obrigatório sobre segurança em máquinas e equipamentos para toda a equipe de produção. Ministrado pela Fabiane (Enfermagem).",
-      priority: "alta",
-      date: "12 Dez, 2024"
-    },
-    {
-      title: "Atualização Sistema ERP",
-      content: "O sistema ERP será atualizado no domingo das 6h às 10h. Durante este período, algumas funcionalidades podem ficar indisponíveis.",
-      priority: "média",
-      date: "10 Dez, 2024"
-    },
-    {
-      title: "Novo Fornecedor de Matéria-Prima",
-      content: "Fechamos parceria com novo fornecedor de algodão orgânico. Setor de compras já está ajustando os pedidos com Felipe.",
-      priority: "baixa",
-      date: "8 Dez, 2024"
-    },
-    {
-      title: "Campanha de Doação de Agasalhos",
-      content: "RH está organizando campanha de doação de agasalhos para a comunidade. Ponto de coleta na recepção com a Jussara.",
-      priority: "baixa",
-      date: "5 Dez, 2024"
-    },
-  ];
+  // Lista de comunicados limpa - todos os comunicados anteriores foram removidos
+  const announcements: Announcement[] = [];
 
   // Mostrar apenas os 4 últimos comunicados
   const recentAnnouncements = announcements.slice(0, 4);
@@ -149,7 +107,7 @@ const Announcements = () => {
                 <p className={expandedItems.has(index) ? "" : "line-clamp-3"}>
                   {announcement.content}
                 </p>
-                {announcement.content.length > 150 && (
+                {announcement.content.length > 100 && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -164,7 +122,7 @@ const Announcements = () => {
                     ) : (
                       <>
                         <ChevronDown className="h-3 w-3 mr-1" />
-                        Leia mais
+                        Continue lendo
                       </>
                     )}
                   </Button>

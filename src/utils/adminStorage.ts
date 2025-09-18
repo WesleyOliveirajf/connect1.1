@@ -24,65 +24,8 @@ export type Announcement = {
   updatedAt?: string;
 };
 
-// Dados padrão da empresa
-const DEFAULT_ANNOUNCEMENTS: Announcement[] = [
-  {
-    id: '1',
-    title: "Manutenção Programada - Setor de Malharia",
-    content: "Manutenção preventiva dos equipamentos de malharia será realizada no sábado das 8h às 12h. Produção será suspensa durante este período.",
-    priority: "alta",
-    date: "21 Dez, 2024",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: '2',
-    title: "Nova Coleção Primavera/Verão 2025",
-    content: "Reunião de apresentação da nova coleção para toda a equipe comercial e de criação. Sexta-feira às 14h na sala de reuniões.",
-    priority: "alta",
-    date: "18 Dez, 2024",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: '3',
-    title: "Confraternização de Final de Ano",
-    content: "Estamos organizando nossa festa de confraternização! Será no dia 20/12 às 18h no refeitório. Confirme presença com o RH.",
-    priority: "média",
-    date: "15 Dez, 2024",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: '4',
-    title: "Treinamento NR-12 - Segurança em Máquinas",
-    content: "Treinamento obrigatório sobre segurança em máquinas e equipamentos para toda a equipe de produção. Ministrado pela Fabiane (Enfermagem).",
-    priority: "alta",
-    date: "12 Dez, 2024",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: '5',
-    title: "Atualização Sistema ERP",
-    content: "O sistema ERP será atualizado no domingo das 6h às 10h. Durante este período, algumas funcionalidades podem ficar indisponíveis.",
-    priority: "média",
-    date: "10 Dez, 2024",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: '6',
-    title: "Novo Fornecedor de Matéria-Prima",
-    content: "Fechamos parceria com novo fornecedor de algodão orgânico. Setor de compras já está ajustando os pedidos com Felipe.",
-    priority: "baixa",
-    date: "8 Dez, 2024",
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: '7',
-    title: "Campanha de Doação de Agasalhos",
-    content: "RH está organizando campanha de doação de agasalhos para a comunidade. Ponto de coleta na recepção com a Jussara.",
-    priority: "baixa",
-    date: "5 Dez, 2024",
-    createdAt: new Date().toISOString()
-  },
-];
+// Dados padrão da empresa - Lista limpa conforme solicitado
+const DEFAULT_ANNOUNCEMENTS: Announcement[] = [];
 
 // Classe para gerenciar o armazenamento administrativo
 export class AdminStorage {

@@ -58,9 +58,6 @@ const LunchHours = () => {
     
     // COMPRAS/PREFEITURA
     { name: "Felipe (Supervisor Operações)", extension: "4708", email: "felipe.marciano@torp.ind.br", department: "Compras/Prefeitura", lunchTime: "13:00-14:00" },
-    
-    // FUNCIONÁRIO DE TESTE
-    { name: "João Silva (TESTE - Demonstração)", extension: "4999", email: "joao.teste@torp.ind.br", department: "TI", lunchTime: "07:00-16:00" },
   ];
 
   // Contar quantos funcionários estão em almoço
