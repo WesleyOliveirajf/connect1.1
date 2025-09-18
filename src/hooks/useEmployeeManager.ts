@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { type Employee } from './useEmployeeSearch';
 import { toast } from './use-toast';
+import { EmployeeService, DepartmentService, setupRealtime } from '@/services/supabaseService';
 
 const STORAGE_KEY = 'torp_employees';
 
@@ -61,209 +62,98 @@ export interface EmployeeFormData {
 
 export const useEmployeeManager = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Função para garantir que todos os funcionários tenham IDs
-  const ensureEmployeeIds = (employees: Employee[]): Employee[] => {
-    return employees.map(emp => ({
-      ...emp,
-      id: emp.id || generateId()
-    }));
-  };
-
-  // Carregar funcionários do localStorage ou usar dados padrão
+  // Carregar dados do Supabase
   useEffect(() => {
-    try {
-      console.log('[useEmployeeManager] 🔍 Verificando dados no localStorage...');
-      const storedEmployees = localStorage.getItem(STORAGE_KEY);
-      if (storedEmployees) {
-        const parsed = JSON.parse(storedEmployees);
-        const employeesWithIds = ensureEmployeeIds(parsed);
-        console.log(`[useEmployeeManager] ✅ Encontrados ${employeesWithIds.length} funcionários no localStorage`);
-        console.log('[useEmployeeManager] Primeiros 3 funcionários:', employeesWithIds.slice(0, 3).map(emp => ({ name: emp.name, department: emp.department })));
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Carregar funcionários e departamentos em paralelo
+        const [employeesData, departmentsData] = await Promise.all([
+          EmployeeService.getEmployees(),
+          DepartmentService.getDepartments()
+        ]);
+        
+        setEmployees(employeesData);
+        setDepartments(departmentsData.map(dept => dept.name));
+        
+        console.log(`[useEmployeeManager] ✅ Carregados ${employeesData.length} funcionários e ${departmentsData.length} departamentos`);
+      } catch (error) {
+        console.error('[useEmployeeManager] ❌ Erro ao carregar dados:', error);
+        // Fallback para dados padrão em caso de erro
+        const employeesWithIds = DEFAULT_EMPLOYEES.map(emp => ({
+          ...emp,
+          id: emp.id || generateId()
+        }));
         setEmployees(employeesWithIds);
-        // Salvar de volta com IDs se necessário
-        if (employeesWithIds.some((emp, index) => emp.id !== parsed[index]?.id)) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(employeesWithIds));
-          console.log(`[useEmployeeManager] 💾 Salvos ${employeesWithIds.length} funcionários no localStorage`);
-        }
-      } else {
-        console.log('[useEmployeeManager] ⚠️ Nenhum dado encontrado no localStorage, usando dados padrão');
-        const employeesWithIds = ensureEmployeeIds(DEFAULT_EMPLOYEES);
-        setEmployees(employeesWithIds);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(employeesWithIds));
-        console.log(`[useEmployeeManager] 💾 Salvos ${employeesWithIds.length} funcionários padrão no localStorage`);
+        setDepartments([...new Set(employeesWithIds.map(emp => emp.department))]);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('[useEmployeeManager] ❌ Erro ao carregar funcionários:', error);
-      const employeesWithIds = ensureEmployeeIds(DEFAULT_EMPLOYEES);
-      setEmployees(employeesWithIds);
-    } finally {
-      setIsLoading(false);
-      console.log('[useEmployeeManager] 🎉 Carregamento concluído');
-    }
+    };
+
+    loadData();
+
+    // Configurar realtime para sincronização
+    setupRealtime();
+
+    // Escutar eventos de atualização
+    const handleEmployeesUpdate = () => {
+      loadData();
+    };
+
+    window.addEventListener('employees_updated', handleEmployeesUpdate);
+    
+    return () => {
+      window.removeEventListener('employees_updated', handleEmployeesUpdate);
+    };
   }, []);
 
-  // Salvar funcionários no localStorage
-  const saveEmployees = (newEmployees: Employee[]) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newEmployees));
-      setEmployees(newEmployees);
-    } catch (error) {
-      console.error('Erro ao salvar funcionários:', error);
-      toast({
-        title: "❌ Erro ao Salvar",
-        description: "Não foi possível salvar as alterações.",
-        variant: "destructive",
-      });
-    }
-  };
-
   // Adicionar novo funcionário
-  const addEmployee = (employeeData: EmployeeFormData): boolean => {
-    try {
-      // Verificar se o email já existe (se não for 'xxx')
-      if (employeeData.email !== 'xxx') {
-        const emailExists = employees.some(emp => emp.email === employeeData.email);
-        if (emailExists) {
-          toast({
-            title: "❌ Email já existe",
-            description: `O email ${employeeData.email} já está sendo usado por outro funcionário.`,
-            variant: "destructive",
-          });
-          return false;
-        }
-      }
-
-      const newEmployee: Employee = {
-        id: generateId(),
-        ...employeeData,
-        lunchTime: employeeData.lunchTime || undefined,
-      };
-
-      const updatedEmployees = [...employees, newEmployee];
-      saveEmployees(updatedEmployees);
-
-      toast({
-        title: "✅ Funcionário Adicionado",
-        description: `${employeeData.name} foi adicionado com sucesso.`,
-      });
-
-      return true;
-    } catch (error) {
-      console.error('Erro ao adicionar funcionário:', error);
-      toast({
-        title: "❌ Erro ao Adicionar",
-        description: "Não foi possível adicionar o funcionário.",
-        variant: "destructive",
-      });
-      return false;
+  const addEmployee = async (employeeData: EmployeeFormData): Promise<boolean> => {
+    const success = await EmployeeService.addEmployee(employeeData);
+    if (success) {
+      // Recarregar dados após adição
+      const updatedEmployees = await EmployeeService.getEmployees();
+      setEmployees(updatedEmployees);
     }
+    return success;
   };
 
   // Editar funcionário existente
-  const updateEmployee = (id: string, employeeData: EmployeeFormData): boolean => {
-    try {
-      const index = employees.findIndex(emp => emp.id === id);
-      if (index === -1) {
-        toast({
-          title: "❌ Erro ao Atualizar",
-          description: "Funcionário não encontrado.",
-          variant: "destructive",
-        });
-        return false;
-      }
-
-      // Verificar se o email já existe (exceto para o próprio funcionário e se não for 'xxx')
-      if (employeeData.email !== 'xxx') {
-        const emailExists = employees.some(emp => 
-          emp.id !== id && emp.email === employeeData.email
-        );
-        if (emailExists) {
-          toast({
-            title: "❌ Email já existe",
-            description: `O email ${employeeData.email} já está sendo usado por outro funcionário.`,
-            variant: "destructive",
-          });
-          return false;
-        }
-      }
-
-      const updatedEmployees = [...employees];
-      updatedEmployees[index] = {
-        ...updatedEmployees[index],
-        ...employeeData,
-        lunchTime: employeeData.lunchTime || undefined,
-      };
-
-      saveEmployees(updatedEmployees);
-
-      toast({
-        title: "✅ Funcionário Atualizado",
-        description: `${employeeData.name} foi atualizado com sucesso.`,
-      });
-
-      return true;
-    } catch (error) {
-      console.error('Erro ao atualizar funcionário:', error);
-      toast({
-        title: "❌ Erro ao Atualizar",
-        description: "Não foi possível atualizar o funcionário.",
-        variant: "destructive",
-      });
-      return false;
+  const updateEmployee = async (id: string, employeeData: EmployeeFormData): Promise<boolean> => {
+    const success = await EmployeeService.updateEmployee(id, employeeData);
+    if (success) {
+      // Recarregar dados após atualização
+      const updatedEmployees = await EmployeeService.getEmployees();
+      setEmployees(updatedEmployees);
     }
+    return success;
   };
 
   // Remover funcionário
-  const removeEmployee = (id: string): boolean => {
-    try {
-      const employeeToRemove = employees.find(emp => emp.id === id);
-      if (!employeeToRemove) {
-        toast({
-          title: "❌ Erro ao Remover",
-          description: "Funcionário não encontrado.",
-          variant: "destructive",
-        });
-        return false;
-      }
-
-      const updatedEmployees = employees.filter(emp => emp.id !== id);
-      saveEmployees(updatedEmployees);
-
-      toast({
-        title: "✅ Funcionário Removido",
-        description: `${employeeToRemove.name} foi removido com sucesso.`,
-      });
-
-      return true;
-    } catch (error) {
-      console.error('Erro ao remover funcionário:', error);
-      toast({
-        title: "❌ Erro ao Remover",
-        description: "Não foi possível remover o funcionário.",
-        variant: "destructive",
-      });
-      return false;
+  const removeEmployee = async (id: string): Promise<boolean> => {
+    const success = await EmployeeService.deleteEmployee(id);
+    if (success) {
+      // Recarregar dados após remoção
+      const updatedEmployees = await EmployeeService.getEmployees();
+      setEmployees(updatedEmployees);
     }
+    return success;
   };
 
-  // Resetar para dados padrão
-  const resetToDefault = () => {
-    try {
-      saveEmployees(DEFAULT_EMPLOYEES);
-      toast({
-        title: "✅ Dados Resetados",
-        description: "Lista de funcionários foi resetada para os dados padrão.",
-      });
-    } catch (error) {
-      console.error('Erro ao resetar funcionários:', error);
-      toast({
-        title: "❌ Erro ao Resetar",
-        description: "Não foi possível resetar os dados.",
-        variant: "destructive",
-      });
+  // Adicionar novo departamento
+  const addDepartment = async (name: string): Promise<boolean> => {
+    const success = await DepartmentService.addDepartment(name);
+    if (success) {
+      // Recarregar departamentos
+      const departmentsData = await DepartmentService.getDepartments();
+      setDepartments(departmentsData.map(dept => dept.name));
     }
+    return success;
   };
 
   // Exportar dados
@@ -276,7 +166,7 @@ export const useEmployeeManager = () => {
     }
   };
 
-  // Importar dados
+  // Importar dados (implementação simplificada para compatibilidade)
   const importEmployees = (jsonData: string): boolean => {
     try {
       const importedEmployees = JSON.parse(jsonData);
@@ -293,13 +183,14 @@ export const useEmployeeManager = () => {
         }
       }
 
-      saveEmployees(importedEmployees);
+      // TODO: Implementar importação em lote no Supabase
       toast({
-        title: "✅ Dados Importados",
-        description: `${importedEmployees.length} funcionários foram importados com sucesso.`,
+        title: "⚠️ Importação Temporariamente Desabilitada",
+        description: "A importação será implementada em breve. Use a interface para adicionar funcionários individualmente.",
+        variant: "destructive",
       });
 
-      return true;
+      return false;
     } catch (error) {
       console.error('Erro ao importar funcionários:', error);
       toast({
@@ -311,21 +202,16 @@ export const useEmployeeManager = () => {
     }
   };
 
-  // Obter departamentos únicos
-  const getDepartments = (): string[] => {
-    const departments = employees.map(emp => emp.department);
-    return [...new Set(departments)].sort();
-  };
-
   return {
     employees,
+    departments,
     isLoading,
     addEmployee,
     updateEmployee,
     removeEmployee,
-    resetToDefault,
+    addDepartment,
     exportEmployees,
     importEmployees,
-    getDepartments,
+    getDepartments: () => departments,
   };
 };

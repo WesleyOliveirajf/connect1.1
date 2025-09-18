@@ -10,7 +10,7 @@ import { type Employee } from '@/hooks/useEmployeeSearch';
 
 interface EmployeeFormProps {
   employee?: Employee;
-  onSave: (data: EmployeeFormData) => boolean;
+  onSave: (data: EmployeeFormData) => boolean | Promise<boolean>;
   onCancel: () => void;
   departments: string[];
   isEditing?: boolean;
@@ -196,33 +196,42 @@ const EmployeeForm = ({ employee, onSave, onCancel, departments, isEditing = fal
             <Building className="h-4 w-4" />
             Departamento *
           </Label>
-          <Select
-            value={formData.department}
-            onValueChange={(value) => updateField('department', value)}
-          >
-            <SelectTrigger className={errors.department ? 'border-red-500' : ''}>
-              <SelectValue placeholder="Selecione o departamento" />
-            </SelectTrigger>
-            <SelectContent>
-              {departments.map((dept) => (
-                <SelectItem key={dept} value={dept}>
-                  {dept}
+          <div className="flex gap-2">
+            <Select
+              value={formData.department}
+              onValueChange={(value) => {
+                if (value === 'Novo Departamento') {
+                  updateField('department', '');
+                } else {
+                  updateField('department', value);
+                }
+              }}
+            >
+              <SelectTrigger className={`flex-1 ${errors.department ? 'border-red-500' : ''}`}>
+                <SelectValue placeholder="Selecione o departamento" />
+              </SelectTrigger>
+              <SelectContent>
+                {departments.map((dept) => (
+                  <SelectItem key={dept} value={dept}>
+                    {dept}
+                  </SelectItem>
+                ))}
+                <SelectItem value="Novo Departamento">
+                  + Novo Departamento
                 </SelectItem>
-              ))}
-              <SelectItem value="Novo Departamento">
-                + Novo Departamento
-              </SelectItem>
-            </SelectContent>
-          </Select>
+              </SelectContent>
+            </Select>
+          </div>
           {errors.department && (
             <p className="text-sm text-red-500">{errors.department}</p>
           )}
           
           {/* Campo para novo departamento */}
-          {formData.department === 'Novo Departamento' && (
+          {formData.department === '' && (
             <Input
               type="text"
               placeholder="Digite o nome do novo departamento"
+              value={formData.department}
               onChange={(e) => updateField('department', e.target.value)}
               className="mt-2"
             />

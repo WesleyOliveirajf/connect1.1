@@ -3,17 +3,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Megaphone, ChevronDown, ChevronUp } from "lucide-react";
 import { useStaggerAnimation } from "@/hooks/useStaggerAnimation";
+import { useAnnouncements, type Announcement } from "@/hooks/useAnnouncements";
 import { useState } from "react";
-
-type Announcement = {
-  title: string;
-  content: string;
-  priority: 'alta' | 'média' | 'baixa';
-  date: string;
-};
 
 const Announcements = () => {
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
+  const { announcements, isLoading } = useAnnouncements();
   
   const toggleExpanded = (index: number) => {
     const newExpanded = new Set(expandedItems);
@@ -24,9 +19,6 @@ const Announcements = () => {
     }
     setExpandedItems(newExpanded);
   };
-  
-  // Lista de comunicados limpa - todos os comunicados anteriores foram removidos
-  const announcements: Announcement[] = [];
 
   // Mostrar apenas os 4 últimos comunicados
   const recentAnnouncements = announcements.slice(0, 4);
@@ -72,7 +64,15 @@ const Announcements = () => {
       </div>
       
       <div className="space-y-4">
-        {recentAnnouncements.length === 0 ? (
+        {isLoading ? (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Carregando comunicados...</h3>
+            <p className="text-muted-foreground">
+              Aguarde enquanto buscamos os comunicados mais recentes.
+            </p>
+          </div>
+        ) : recentAnnouncements.length === 0 ? (
           <div className="text-center py-12">
             <Megaphone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-foreground mb-2">Nenhum comunicado encontrado</h3>
@@ -82,7 +82,7 @@ const Announcements = () => {
           </div>
         ) : (
           recentAnnouncements.map((announcement, index) => (
-          <div key={index} 
+          <div key={announcement.id} 
                className={`group/item p-5 rounded-xl gradient-secondary hover:shadow-lg transition-all duration-300 border border-border/50 hover:border-border ${getAnimationClass(index)}`}>
             <div className="flex flex-col gap-3">
               <div className="flex justify-between items-start gap-3">

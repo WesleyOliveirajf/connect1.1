@@ -25,7 +25,7 @@ const EmployeeDirectory = () => {
     employees, 
     addEmployee, 
     updateEmployee, 
-    deleteEmployee, 
+    removeEmployee, 
     getDepartments,
     isLoading 
   } = useEmployeeManager();
@@ -56,20 +56,26 @@ const EmployeeDirectory = () => {
   
   const confirmDeleteEmployee = () => {
     if (deletingEmployee) {
-      deleteEmployee(deletingEmployee.id!);
+      removeEmployee(deletingEmployee.id!);
       setDeletingEmployee(null);
       setIsDeleteDialogOpen(false);
     }
   };
   
-  const handleFormSubmit = (formData: EmployeeFormData) => {
-    if (editingEmployee) {
-      updateEmployee(editingEmployee.id!, formData);
-    } else {
-      addEmployee(formData);
+  const handleFormSubmit = async (formData: EmployeeFormData): Promise<boolean> => {
+    try {
+      if (editingEmployee) {
+        await updateEmployee(editingEmployee.id!, formData);
+      } else {
+        await addEmployee(formData);
+      }
+      setIsFormOpen(false);
+      setEditingEmployee(null);
+      return true;
+    } catch (error) {
+      console.error('Erro ao salvar funcionário:', error);
+      return false;
     }
-    setIsFormOpen(false);
-    setEditingEmployee(null);
   };
   
   const handleFormCancel = () => {
@@ -272,8 +278,8 @@ const EmployeeDirectory = () => {
           </div>
           
           <div className="flex items-center gap-2">
-            {/* Botão para criar novo funcionário - visível apenas para admins */}
-            {isAdminMode && (
+            {/* Botão para criar novo funcionário - OCULTO da tela principal */}
+            {/* {isAdminMode && (
               <Button 
                 onClick={handleCreateEmployee}
                 size="sm" 
@@ -282,7 +288,7 @@ const EmployeeDirectory = () => {
                 <Plus className="h-4 w-4" />
                 Novo Funcionário
               </Button>
-            )}
+            )} */}
             
             <Dialog open={isAdvancedSearchOpen} onOpenChange={setIsAdvancedSearchOpen}>
               <DialogTrigger asChild>
@@ -355,7 +361,8 @@ const EmployeeDirectory = () => {
                 : 'Comece adicionando funcionários ao diretório para visualizá-los aqui'
               }
             </p>
-            {isAdminMode && !hasFilters && (
+            {/* Botão Adicionar Primeiro Funcionário - OCULTO da tela principal */}
+            {/* {isAdminMode && !hasFilters && (
               <Button 
                 onClick={handleCreateEmployee}
                 className="gap-2 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
@@ -363,7 +370,7 @@ const EmployeeDirectory = () => {
                 <Plus className="h-4 w-4" />
                 Adicionar Primeiro Funcionário
               </Button>
-            )}
+            )} */}
           </div>
         ) : (
           <>
@@ -426,8 +433,8 @@ const EmployeeDirectory = () => {
                              <ExternalLink className="h-2.5 w-2.5 sm:h-3 sm:w-3" aria-hidden="true" />
                            </Button>
                            
-                           {/* Botões administrativos - visíveis apenas para admins */}
-                           {isAdminMode && (
+                           {/* Botões administrativos - OCULTOS da tela principal */}
+                           {/* {isAdminMode && (
                              <div className="flex gap-1 ml-2 border-l border-border/30 pl-2">
                                <Button
                                  variant="outline"
@@ -450,7 +457,7 @@ const EmployeeDirectory = () => {
                                  <Trash2 className="h-3 w-3 text-red-700" aria-hidden="true" />
                                </Button>
                              </div>
-                           )}
+                           )} */}
                          </div>
                        </div>
                      </div>
@@ -563,8 +570,10 @@ const EmployeeDirectory = () => {
           </DialogHeader>
           <EmployeeForm
             employee={editingEmployee}
-            onSubmit={handleFormSubmit}
+            onSave={handleFormSubmit}
             onCancel={handleFormCancel}
+            departments={getDepartments()}
+            isEditing={!!editingEmployee}
           />
         </DialogContent>
       </Dialog>

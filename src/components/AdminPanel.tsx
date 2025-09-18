@@ -23,26 +23,10 @@ import { Announcement } from '@/hooks/useAnnouncements';
 import { useSecureSession } from '@/utils/sessionStorage';
 import { useRateLimiter } from '@/utils/rateLimiter';
 import EmployeeManager from './EmployeeManager';
-import AnnouncementManagerSimple from './AnnouncementManagerSimple';
+import AnnouncementManager from './AnnouncementManager';
 import ServiceStatus from './ServiceStatus';
 
-interface AdminPanelProps {
-  announcements: Announcement[];
-  onAnnouncementsChange: (announcements: Announcement[]) => void;
-  exportData?: () => string | null;
-  importData?: (jsonData: string) => boolean;
-  restoreFromBackup?: () => boolean;
-  resetAnnouncements?: () => boolean;
-}
-
-const AdminPanel: React.FC<AdminPanelProps> = ({
-  announcements,
-  onAnnouncementsChange,
-  exportData,
-  importData,
-  restoreFromBackup,
-  resetAnnouncements
-}) => {
+const AdminPanel: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -259,14 +243,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               
               <div className="mt-4 max-h-[70vh] overflow-y-auto">
                 <TabsContent value="announcements" className="space-y-4">
-                  <AnnouncementManagerSimple
-                    announcements={announcements}
-                    onAnnouncementsChange={onAnnouncementsChange}
-                    exportData={exportData}
-                    importData={importData}
-                    restoreFromBackup={restoreFromBackup}
-                    resetAnnouncements={resetAnnouncements}
-                  />
+                  <AnnouncementManager />
                 </TabsContent>
                 
                 <TabsContent value="employees" className="space-y-4">

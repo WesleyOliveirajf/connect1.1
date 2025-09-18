@@ -5,33 +5,36 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Edit, Trash2, Eye, EyeOff, Megaphone } from 'lucide-react';
-import { Announcement } from '@/hooks/useAnnouncements';
+import { useAnnouncements, type Announcement } from '@/hooks/useAnnouncements';
 
 
-interface AnnouncementManagerProps {
-  announcements: Announcement[];
-  onAnnouncementsChange: (announcements: Announcement[]) => void;
-  exportData?: () => string | null;
-  importData?: (jsonData: string) => boolean;
-  restoreFromBackup?: () => boolean;
-  resetAnnouncements?: () => boolean;
-}
-
-const AnnouncementManager: React.FC<AnnouncementManagerProps> = ({ 
-  announcements, 
-  onAnnouncementsChange,
-  exportData,
-  importData,
-  restoreFromBackup,
-  resetAnnouncements
-}) => {
+const AnnouncementManager: React.FC = () => {
+  const { 
+    announcements, 
+    addAnnouncement, 
+    updateAnnouncement, 
+    deleteAnnouncement,
+    exportData,
+    importData 
+  } = useAnnouncements();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const [showAllAnnouncements, setShowAllAnnouncements] = useState(false);
+  const [announcementToDelete, setAnnouncementToDelete] = useState<Announcement | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     content: '',
@@ -42,7 +45,7 @@ const AnnouncementManager: React.FC<AnnouncementManagerProps> = ({
 
 
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.title.trim() || !formData.content.trim()) {
       toast({
         title: "⚠️ Campos Obrigatórios",
@@ -52,68 +55,33 @@ const AnnouncementManager: React.FC<AnnouncementManagerProps> = ({
       return;
     }
 
-    const now = new Date();
-    const dateStr = now.toLocaleDateString('pt-BR', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    });
-
     if (editingAnnouncement) {
       // Editar comunicado existente
-      const updatedAnnouncements = announcements.map(ann => 
-        ann.id === editingAnnouncement.id 
-          ? { ...ann, ...formData, date: dateStr, updatedAt: now.toISOString() }
-          : ann
-      );
-      const success = onAnnouncementsChange(updatedAnnouncements);
+      const success = await updateAnnouncement(editingAnnouncement.id, {
+        title: formData.title.trim(),
+        content: formData.content.trim(),
+        priority: formData.priority,
+      });
       
-      if (success !== false) {
-        toast({
-          title: "✅ Comunicado Atualizado",
-          description: `"${formData.title}" foi atualizado com sucesso.`,
-        });
-      } else {
-        toast({
-          title: "❌ Erro ao Atualizar",
-          description: "Falha ao salvar as alterações. Tente novamente.",
-          variant: "destructive",
-        });
-        return;
+      if (success) {
+        setEditingAnnouncement(null);
+        setIsCreateOpen(false);
       }
     } else {
       // Criar novo comunicado
-      const newAnnouncement: Announcement = {
-        id: `ann_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        ...formData,
+      const success = await addAnnouncement({
         title: formData.title.trim(),
         content: formData.content.trim(),
-        date: dateStr,
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString()
-      };
+        priority: formData.priority,
+      });
       
-      const success = onAnnouncementsChange([newAnnouncement, ...announcements]);
-      
-      if (success !== false) {
-        toast({
-          title: "✅ Comunicado Criado",
-          description: `"${newAnnouncement.title}" foi adicionado com sucesso.`,
-        });
-      } else {
-        toast({
-          title: "❌ Erro ao Criar",
-          description: "Falha ao salvar o comunicado. Tente novamente.",
-          variant: "destructive",
-        });
-        return;
+      if (success) {
+        setIsCreateOpen(false);
       }
     }
 
     // Reset form
     setFormData({ title: '', content: '', priority: 'média' });
-    setEditingAnnouncement(null);
-    setIsCreateOpen(false);
   };
 
   const handleEdit = (announcement: Announcement) => {
@@ -126,22 +94,17 @@ const AnnouncementManager: React.FC<AnnouncementManagerProps> = ({
     setIsCreateOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    const announcementToDelete = announcements.find(ann => ann.id === id);
-    const updatedAnnouncements = announcements.filter(ann => ann.id !== id);
-    const success = onAnnouncementsChange(updatedAnnouncements);
-    
-    if (success !== false) {
-      toast({
-        title: "🗑️ Comunicado Removido",
-        description: `"${announcementToDelete?.title || 'Comunicado'}" foi excluído com sucesso.`,
-      });
-    } else {
-      toast({
-        title: "❌ Erro ao Excluir",
-        description: "Falha ao remover o comunicado. Tente novamente.",
-        variant: "destructive",
-      });
+  const handleDelete = async (id: string) => {
+    const announcement = announcements.find(ann => ann.id === id);
+    if (announcement) {
+      setAnnouncementToDelete(announcement);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (announcementToDelete) {
+      await deleteAnnouncement(announcementToDelete.id);
+      setAnnouncementToDelete(null);
     }
   };
 
@@ -190,6 +153,15 @@ const AnnouncementManager: React.FC<AnnouncementManagerProps> = ({
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Botão Adicionar Comunicado */}
+            <Button
+              onClick={() => setIsCreateOpen(true)}
+              className="gap-2 bg-primary hover:bg-primary/90"
+            >
+              <Plus className="h-4 w-4" />
+              Adicionar Comunicado
+            </Button>
+            
             {/* Controles de Visualização */}
             <Button
               variant="outline"
@@ -225,17 +197,41 @@ const AnnouncementManager: React.FC<AnnouncementManagerProps> = ({
                   <h3 className="font-bold text-secondary-foreground text-lg group-hover/item:text-foreground transition-colors line-clamp-2">
                     {announcement.title}
                   </h3>
-                  <Badge 
-                    variant="secondary" 
-                    className="text-xs font-semibold px-2 py-1 shadow-sm flex-shrink-0"
-                    style={{ 
-                      backgroundColor: `${getPriorityColor(announcement.priority)}15`,
-                      color: getPriorityColor(announcement.priority),
-                      border: `1px solid ${getPriorityColor(announcement.priority)}40`
-                    }}
-                  >
-                    {getPriorityIcon(announcement.priority)}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge 
+                      variant="secondary" 
+                      className="text-xs font-semibold px-2 py-1 shadow-sm flex-shrink-0"
+                      style={{ 
+                        backgroundColor: `${getPriorityColor(announcement.priority)}15`,
+                        color: getPriorityColor(announcement.priority),
+                        border: `1px solid ${getPriorityColor(announcement.priority)}40`
+                      }}
+                    >
+                      {getPriorityIcon(announcement.priority)}
+                    </Badge>
+                    
+                    {/* Botões de Ação */}
+                    <div className="flex gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEdit(announcement)}
+                        className="h-8 w-8 p-0 hover:bg-blue-50 hover:border-blue-300"
+                        title="Editar comunicado"
+                      >
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDelete(announcement.id)}
+                        className="h-8 w-8 p-0 hover:bg-red-50 hover:border-red-300 hover:text-red-600"
+                        title="Excluir comunicado"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
                 <p className="text-muted-foreground leading-relaxed text-sm line-clamp-3">
                   {announcement.content}
@@ -255,6 +251,110 @@ const AnnouncementManager: React.FC<AnnouncementManagerProps> = ({
           ))
         )}
       </div>
+
+      {/* Dialog de Criação/Edição */}
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Megaphone className="h-5 w-5" />
+              {editingAnnouncement ? 'Editar Comunicado' : 'Novo Comunicado'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* Título */}
+            <div className="space-y-2">
+              <Label htmlFor="title">Título *</Label>
+              <Input
+                id="title"
+                value={formData.title}
+                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="Digite o título do comunicado"
+              />
+            </div>
+
+            {/* Conteúdo */}
+            <div className="space-y-2">
+              <Label htmlFor="content">Conteúdo *</Label>
+              <Textarea
+                id="content"
+                value={formData.content}
+                onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
+                placeholder="Digite o conteúdo do comunicado"
+                rows={4}
+              />
+            </div>
+
+            {/* Prioridade */}
+            <div className="space-y-2">
+              <Label htmlFor="priority">Prioridade</Label>
+              <Select
+                value={formData.priority}
+                onValueChange={(value: 'alta' | 'média' | 'baixa') => 
+                  setFormData(prev => ({ ...prev, priority: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a prioridade" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="alta">🔴 Alta</SelectItem>
+                  <SelectItem value="média">🟡 Média</SelectItem>
+                  <SelectItem value="baixa">🟢 Baixa</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Botões */}
+            <div className="flex gap-2 pt-4">
+              <Button
+                onClick={handleSave}
+                className="flex-1 gap-2"
+                disabled={!formData.title.trim() || !formData.content.trim()}
+              >
+                <Plus className="h-4 w-4" />
+                {editingAnnouncement ? 'Atualizar' : 'Criar'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsCreateOpen(false);
+                  setEditingAnnouncement(null);
+                  setFormData({ title: '', content: '', priority: 'média' });
+                }}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de Confirmação de Exclusão */}
+      <AlertDialog open={!!announcementToDelete} onOpenChange={() => setAnnouncementToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-500" />
+              Confirmar Exclusão
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o comunicado <strong>"{announcementToDelete?.title}"</strong>?
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };

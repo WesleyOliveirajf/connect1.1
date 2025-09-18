@@ -1,115 +1,108 @@
 import { useState, useEffect } from 'react';
-import { AdminStorage, type Announcement, useAdminStorage } from '../utils/adminStorage';
+import { AnnouncementService, setupRealtime } from '@/services/supabaseService';
+
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  priority: 'alta' | 'média' | 'baixa';
+  date: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export const useAnnouncements = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const adminStorage = useAdminStorage();
 
-  // Carregar comunicados usando o sistema de armazenamento administrativo
+  // Carregar comunicados do Supabase
   useEffect(() => {
     const loadAnnouncements = async () => {
       try {
         setIsLoading(true);
-        
-        // Verificar integridade dos dados primeiro
-        const isValid = adminStorage.validateData();
-        
-        if (!isValid) {
-          console.warn('⚠️ Dados corrompidos detectados, restaurando backup...');
-          const backup = adminStorage.restoreFromBackup();
-          if (backup) {
-            setAnnouncements(backup);
-            adminStorage.saveAnnouncements(backup);
-          } else {
-            console.log('🔄 Backup não disponível, usando dados padrão');
-            const defaultData = adminStorage.resetToDefault();
-            setAnnouncements(defaultData);
-          }
-        } else {
-          // Carregar dados normalmente
-          const loadedAnnouncements = adminStorage.loadAnnouncements();
-          setAnnouncements(loadedAnnouncements);
-        }
+        const data = await AnnouncementService.getAnnouncements();
+        setAnnouncements(data);
+        console.log(`[useAnnouncements] ✅ Carregados ${data.length} comunicados`);
       } catch (error) {
-        console.error('❌ Erro crítico ao carregar comunicados:', error);
-        // Fallback para dados padrão em caso de erro crítico
-        const defaultData = adminStorage.resetToDefault();
-        setAnnouncements(defaultData);
+        console.error('[useAnnouncements] ❌ Erro ao carregar comunicados:', error);
+        setAnnouncements([]);
       } finally {
         setIsLoading(false);
       }
     };
 
     loadAnnouncements();
+
+    // Configurar realtime para sincronização
+    setupRealtime();
+
+    // Escutar eventos de atualização
+    const handleAnnouncementsUpdate = () => {
+      loadAnnouncements();
+    };
+
+    window.addEventListener('announcements_updated', handleAnnouncementsUpdate);
+    
+    return () => {
+      window.removeEventListener('announcements_updated', handleAnnouncementsUpdate);
+    };
   }, []);
 
-  // Atualizar comunicados com validação e backup automático
-  const updateAnnouncements = (newAnnouncements: Announcement[]) => {
-    try {
-      // Validar dados antes de salvar
-      const isValid = newAnnouncements.every(ann => 
-        ann.id && ann.title && ann.content && ann.priority && ann.date
-      );
-
-      if (!isValid) {
-        console.error('❌ Dados inválidos detectados, operação cancelada');
-        return false;
-      }
-
-      // Atualizar estado local
-      setAnnouncements(newAnnouncements);
-      
-      // Salvar com backup automático
-      const success = adminStorage.saveAnnouncements(newAnnouncements);
-      
-      if (success) {
-        console.log('✅ Comunicados atualizados com sucesso');
-        return true;
-      } else {
-        console.error('❌ Falha ao salvar comunicados');
-        return false;
-      }
-    } catch (error) {
-      console.error('❌ Erro ao atualizar comunicados:', error);
-      return false;
+  // Adicionar comunicado
+  const addAnnouncement = async (announcementData: Omit<Announcement, 'id' | 'date' | 'createdAt' | 'updatedAt'>) => {
+    const success = await AnnouncementService.addAnnouncement(announcementData);
+    if (success) {
+      // Recarregar dados após adição
+      const data = await AnnouncementService.getAnnouncements();
+      setAnnouncements(data);
     }
+    return success;
   };
 
-  // Resetar para dados padrão com confirmação
-  const resetAnnouncements = () => {
-    try {
-      const defaultData = adminStorage.resetToDefault();
-      setAnnouncements(defaultData);
-      console.log('🔄 Comunicados resetados para padrão');
-      return true;
-    } catch (error) {
-      console.error('❌ Erro ao resetar comunicados:', error);
-      return false;
+  // Atualizar comunicado
+  const updateAnnouncement = async (id: string, announcementData: Partial<Omit<Announcement, 'id' | 'date' | 'createdAt' | 'updatedAt'>>) => {
+    const success = await AnnouncementService.updateAnnouncement(id, announcementData);
+    if (success) {
+      // Recarregar dados após atualização
+      const data = await AnnouncementService.getAnnouncements();
+      setAnnouncements(data);
     }
+    return success;
   };
 
-  // Exportar dados para backup manual
+  // Remover comunicado
+  const deleteAnnouncement = async (id: string) => {
+    const success = await AnnouncementService.deleteAnnouncement(id);
+    if (success) {
+      // Recarregar dados após remoção
+      const data = await AnnouncementService.getAnnouncements();
+      setAnnouncements(data);
+    }
+    return success;
+  };
+
+  // Exportar dados
   const exportData = () => {
     try {
-      return adminStorage.exportData();
+      return JSON.stringify(announcements, null, 2);
     } catch (error) {
       console.error('❌ Erro ao exportar dados:', error);
       return null;
     }
   };
 
-  // Importar dados de backup manual
+  // Importar dados (implementação simplificada para compatibilidade)
   const importData = (jsonData: string) => {
     try {
-      const success = adminStorage.importData(jsonData);
-      if (success) {
-        // Recarregar dados após importação
-        const importedAnnouncements = adminStorage.loadAnnouncements();
-        setAnnouncements(importedAnnouncements);
-        console.log('📥 Dados importados e aplicados com sucesso');
-        return true;
+      const importedAnnouncements = JSON.parse(jsonData);
+      
+      // Validar estrutura dos dados
+      if (!Array.isArray(importedAnnouncements)) {
+        throw new Error('Dados devem ser um array');
       }
+
+      // TODO: Implementar importação em lote no Supabase
+      console.warn('⚠️ Importação de comunicados temporariamente desabilitada');
       return false;
     } catch (error) {
       console.error('❌ Erro ao importar dados:', error);
@@ -117,36 +110,15 @@ export const useAnnouncements = () => {
     }
   };
 
-  // Restaurar do backup automático
-  const restoreFromBackup = () => {
-    try {
-      const backup = adminStorage.restoreFromBackup();
-      if (backup) {
-        setAnnouncements(backup);
-        adminStorage.saveAnnouncements(backup);
-        console.log('🔄 Backup restaurado com sucesso');
-        return true;
-      } else {
-        console.warn('⚠️ Nenhum backup disponível');
-        return false;
-      }
-    } catch (error) {
-      console.error('❌ Erro ao restaurar backup:', error);
-      return false;
-    }
-  };
-
   return {
     announcements,
     isLoading,
-    updateAnnouncements,
-    resetAnnouncements,
+    addAnnouncement,
+    updateAnnouncement,
+    deleteAnnouncement,
     exportData,
     importData,
-    restoreFromBackup,
-    validateData: adminStorage.validateData
   };
 };
 
-// Exportar tipo para uso em outros componentes
-export type { Announcement };
+// Tipo já exportado na interface acima
